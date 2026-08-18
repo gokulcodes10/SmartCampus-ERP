@@ -10,13 +10,13 @@ Every feature is backed by a real API, a real database table and real persistenc
 
 ## Build Status
 
-🚧 **In development.** The plan is complete and the repository is scaffolded; feature work has not started.
+🚧 **In development.** Phase 1 (Foundation) is complete and verified: the backend boots against real MySQL with Flyway migrations applied, and the frontend builds and serves. Judge0 is the one exception — it cannot run on Docker Desktop (see [Judge0](#judge0) below). Feature work begins in Phase 2.
 
-Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, which also records the confirmed technical decisions and the nine clarifications (G1–G9) resolving gaps in the original scope document.
+Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, which also records the confirmed technical decisions and the ten clarifications (G1–G10) resolving gaps in the original scope document.
 
 | Phase | Module | Status |
 |---|---|---|
-| 1 | Foundation — toolchain, Docker services, scaffolding | ⬜ Not started |
+| 1 | Foundation — toolchain, Docker services, scaffolding | ⚠️ Done, except Judge0 |
 | 2 | Authentication — JWT, roles, OTP password reset | ⬜ Not started |
 | 3 | Core Academic — departments, courses, subjects, students, faculty | ⬜ Not started |
 | 4 | Academic Operations — attendance, exams, marks, grading | ⬜ Not started |
@@ -94,7 +94,7 @@ The setup instructions below describe the intended workflow. Commands that depen
 External integrations, each behind a service abstraction:
 
   AIService            → GroqAIService      (OpenAI-compatible API)
-  CodeExecutionService → Judge0Service      (self-hosted, sandboxed)
+  CodeExecutionService → Judge0Service      (sandboxed — see the Judge0 note)
   EmailService         → SmtpEmailService   (Mailpit in dev)
 ```
 
@@ -139,12 +139,19 @@ External integrations, each behind a service abstraction:
 | Service | Runs in | Port |
 |---|---|---|
 | MySQL 8.4 | Docker | 3306 |
-| Judge0 (self-hosted) | Docker | 2358 |
+| Judge0 | Docker (profile-gated, see below) | 2358 |
 | Mailpit (dev SMTP) | Docker | 1025 SMTP / 8025 UI |
 | Backend | Host (JVM) | 8080 |
 | Frontend | Host (Vite) | 5173 |
 
-Judge0 is self-hosted rather than consumed via RapidAPI: no rate limits during contests, and it works offline.
+<a name="judge0"></a>
+**Judge0 does not run on Docker Desktop.** Judge0 1.13.1 bundles isolate 1.8.1, which drives cgroup v1, while Docker Desktop's LinuxKit VM is cgroup-v2 only — every submission fails with `Failed to create control group`. This is not an Apple Silicon issue: amd64 emulation works fine, and an Intel Mac would fail identically. It is therefore kept behind a compose profile and does not start by default:
+
+```bash
+docker compose --profile judge0 up -d    # will start, but submissions will fail here
+```
+
+Code execution is not needed until Phase 7. Because `CodeExecutionService → Judge0Service` reads `JUDGE0_URL`, pointing it at a hosted Judge0 instance is a configuration change with no code impact. Full investigation transcript in [`docs/judge0-notes.md`](docs/judge0-notes.md).
 
 ---
 

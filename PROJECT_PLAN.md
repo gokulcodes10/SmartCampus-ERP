@@ -1,6 +1,6 @@
 # SmartCampus ERP — Build Plan
 
-**Status:** Planning complete. Phase 1 not started.
+**Status:** Phase 1 (Foundation) complete except Judge0, which is blocked on this machine — see clarification G10. Phase 2 ready to start.
 **Source of truth:** [`docs/SmartCampus-ERP-Scope.pdf`](docs/SmartCampus-ERP-Scope.pdf) — 76 sections. Where this plan and the scope disagree, the scope wins unless the disagreement is recorded in [Spec Clarifications](#2-spec-clarifications) below.
 
 This document is the working plan. Phase numbering matches §74 of the scope exactly. Update the [Phase Tracker](#4-phase-tracker) as phases complete.
@@ -31,7 +31,7 @@ Native JDK 21 + Node 22 on the host; supporting services in Docker.
 | Service | Runs in | Purpose |
 |---|---|---|
 | MySQL 8.4 | Docker | Application database |
-| Judge0 (+ Postgres, Redis) | Docker, **self-hosted** | Code execution. Self-hosted rather than RapidAPI — no rate limits during contests, works offline. |
+| Judge0 (+ Postgres, Redis) | Docker, **profile-gated — does not work here** | Code execution. Self-hosting was attempted and fails on Docker Desktop; see G10. Not needed until Phase 7. |
 | Mailpit | Docker | Dev SMTP sink for OTP / password-reset mail |
 
 Host prerequisites installed in Phase 1: **JDK 21 (Temurin)**, **Node 22 (via nvm)**. Docker Desktop and git are already present.
@@ -79,6 +79,7 @@ The scope is silent or self-contradictory on the following points. These are the
 | **G7** | GPA/CGPA are required (§19, §20, §24) but no grading scale is defined. | **Credit-weighted, 10-point scale.** The grade→point mapping lives in the same admin-configurable table as the §20 grade bands, satisfying the "do not hard-code" requirement. |
 | **G8** | Schema management is unspecified. | **Flyway migrations** with `ddl-auto=validate`. "Production-structured" (§1) and `ddl-auto=update` are incompatible. |
 | **G9** | §37 requires resume PDF export but does not say which side generates it. | **Backend generation** (OpenPDF / Flying Saucer), so the same PDF artifact can be attached to a placement application per §35. Client-side export cannot satisfy that. |
+| **G10** | §28 requires self-hosted Judge0 for code execution. It **cannot run on this development machine** — verified empirically in Phase 1, not assumed. | Judge0 1.13.1 bundles isolate 1.8.1, which drives **cgroup v1**, while Docker Desktop's LinuxKit VM is **cgroup-v2 only**. Every submission fails with `Failed to create control group`. This is *not* an Apple Silicon problem — amd64 emulation works fine and an Intel Mac on Docker Desktop would fail identically. Judge0 is left in `docker-compose.yml` behind the `judge0` compose profile so it never starts by default. `CodeExecutionService → Judge0Service` (§70) is unaffected: it talks to whatever `JUDGE0_URL` points at. **The Phase 7 hosting decision is open — see [Open Decisions](#5-open-decisions).** Full transcript in [`docs/judge0-notes.md`](docs/judge0-notes.md). |
 
 ---
 
@@ -99,6 +100,11 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 - Flyway baseline migration.
 
 **Checkpoint:** backend `/actuator/health` green against real MySQL; frontend dev server serving; Judge0 responding to a submission probe.
+
+> **Outcome:** first two items pass and were independently re-verified from a wiped database
+> volume. The third fails for the environmental reason in G10 and is deferred to Phase 7.
+> The checkpoint text is left unchanged on purpose — it is a record of what was agreed, not
+> something to reword until it passes.
 
 ### Phase 2 — Authentication
 *Scope §74 Phase 2 · §6–§11, §47, §50*
@@ -217,7 +223,7 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 | Phase | Name | Status | Commit |
 |---|---|---|---|
 | — | Plan | ✅ Done | — |
-| 1 | Foundation | ⬜ Not started | |
+| 1 | Foundation | ⚠️ **Partial** — 2 of 3 checkpoint items pass; Judge0 blocked (see note below) | |
 | 2 | Authentication | ⬜ Not started | |
 | 3 | Core Academic | ⬜ Not started | |
 | 4 | Academic Operations | ⬜ Not started | |
@@ -230,10 +236,33 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 | 11 | Real-Time | ⬜ Not started | |
 | 12 | Finalization | ⬜ Not started | |
 
+**Phase 1 note (verified 2026-08-19).** Checkpoint items 1 and 2 were observed passing, not inferred:
+`GET /actuator/health` returned HTTP 200 `{"status":"UP"}` from a booted jar against the real MySQL 8.4
+container (Flyway V1 applied, `flyway_schema_history` at v1, `db` health contributor UP), and the Vite dev
+server served HTTP 200 on :5173. Checkpoint item 3 — "Judge0 responding to a submission probe" — **fails on
+this machine**: Docker Desktop's LinuxKit VM is cgroup v2-only (independently confirmed: `docker info` reports
+Cgroup Version 2 and `/proc/cgroups` shows hierarchy 0 for every v1 controller), while Judge0 1.13.1's bundled
+`isolate` 1.8.1 requires cgroup v1, so every submission returns status 13 Internal Error. This is a Docker
+Desktop constraint, **not** an Apple Silicon/amd64 one. Judge0 is profile-gated off by default
+(`docker compose --profile judge0`); details and the hosted fallback are in `docs/judge0-notes.md`.
+Phase 1 stays **Partial** until Phase 7 resolves this via hosted Judge0 or an amd64 Linux host.
+
 ---
 
-## 5. Notes
+## 5. Open Decisions
+
+Things that need a human answer before the phase that depends on them.
+
+| # | Decision | Needed by | Detail |
+|---|---|---|---|
+| **D1** | Judge0 hosting strategy | **Phase 7** | Three options, none free of tradeoffs. **(a) Hosted Judge0 via RapidAPI** — works today, config-only (`JUDGE0_URL` + `JUDGE0_API_KEY`), but the free tier is roughly 50 submissions/day: enough to build and test Phase 7, *not* enough to run a live contest per §31–32. **(b) Self-host on an amd64 Linux host** booted with `systemd.unified_cgroup_hierarchy=0` — the only no-cost path that supports contests, but requires a machine that is not this one. **(c) Accept that contest demos cannot run locally.** |
+| **D2** | Is a paid RapidAPI tier acceptable if contests must be demonstrated live? | **Phase 7** | A spend decision. Follows from D1. |
+
+---
+
+## 6. Notes
 
 - **Sequencing value.** Phases 1–5 alone produce a genuinely demonstrable ERP: authentication, the full academic core, attendance, marks and analytics dashboards. Phases 6–12 layer on the differentiators. The plan can be stopped or re-prioritised at any phase boundary.
 - **Spring Boot 4.1.0 is very new.** Config-style APIs (particularly Spring Security 7) will be verified against current documentation and the compiler rather than assumed.
-- **Credentials required from the developer:** Groq API key (Phase 6). Everything else runs locally in Docker with no external account.
+- **Credentials required from the developer:** Groq API key (Phase 6), and a Judge0 endpoint per D1 (Phase 7). Everything else runs locally in Docker with no external account.
+- **Toolchain installed in Phase 1:** Temurin JDK 21.0.12 at `~/Library/Java/JavaVirtualMachines/temurin-21.jdk`, and Node v22.23.2 via nvm, symlinked into `~/.local/bin`. Both are user-local — no `sudo`, no Homebrew.

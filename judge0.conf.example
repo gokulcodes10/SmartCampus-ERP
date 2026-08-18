@@ -1,0 +1,69 @@
+# Judge0 v1.13.1 configuration template — used ONLY by the `judge0` compose profile.
+#
+#     cp judge0.conf.example judge0.conf
+#     docker compose --profile judge0 up -d
+#
+# `judge0.conf` is a local file and must never be committed. The values here are
+# placeholders and dev-only defaults; replace the passwords before any non-local use.
+#
+# Read docs/judge0-notes.md FIRST — self-hosted Judge0 does not run on Apple Silicon.
+# Full reference: https://github.com/judge0/judge0/blob/master/judge0.conf
+
+
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
+# Leave empty for an open local instance. Setting this makes Judge0 require an
+# X-Auth-Token header, which is what the backend sends as JUDGE0_API_KEY.
+AUTHN_HEADER=X-Auth-Token
+AUTHZ_HEADER=X-Auth-User
+AUTHN_TOKEN=
+AUTHZ_TOKEN=
+
+RAILS_ENV=production
+RAILS_MAX_THREADS=5
+RAILS_SERVER_PROCESSES=2
+
+ALLOW_ORIGIN=
+DISALLOW_ORIGIN=
+
+
+# ---------------------------------------------------------------------------
+# Workers — how many submissions run in parallel.
+# ---------------------------------------------------------------------------
+COUNT=2
+INTERVAL=0.1
+
+
+# ---------------------------------------------------------------------------
+# Execution limits (seconds / KB / count). Defaults are Judge0's own.
+# ---------------------------------------------------------------------------
+CPU_TIME_LIMIT=5
+MAX_CPU_TIME_LIMIT=15
+CPU_EXTRA_TIME=1
+WALL_TIME_LIMIT=10
+MAX_WALL_TIME_LIMIT=20
+MEMORY_LIMIT=128000
+MAX_MEMORY_LIMIT=512000
+MAX_PROCESSES_AND_OR_THREADS=60
+ENABLE_NETWORK=false
+MAX_SUBMISSION_BATCH_SIZE=20
+ALLOW_ENABLE_NETWORK=false
+
+
+# ---------------------------------------------------------------------------
+# Postgres — must match the judge0-db service in docker-compose.yml.
+# ---------------------------------------------------------------------------
+POSTGRES_HOST=judge0-db
+POSTGRES_PORT=5432
+POSTGRES_DB=judge0
+POSTGRES_USER=judge0
+POSTGRES_PASSWORD=CHANGE_ME_judge0_db_password
+
+
+# ---------------------------------------------------------------------------
+# Redis — must match the judge0-redis service in docker-compose.yml.
+# ---------------------------------------------------------------------------
+REDIS_HOST=judge0-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=CHANGE_ME_judge0_redis_password

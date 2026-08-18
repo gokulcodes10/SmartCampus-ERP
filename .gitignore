@@ -1,5 +1,6 @@
 # ---- Secrets ----
 .env
+judge0.conf
 .env.local
 .env.*.local
 *.pem

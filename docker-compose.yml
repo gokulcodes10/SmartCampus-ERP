@@ -1,0 +1,187 @@
+# SmartCampus ERP — development supporting services.
+#
+# Default profile (no flags):  MySQL 8.4 + Mailpit.  These are the two services the
+# backend needs from Phase 1 onwards, and they are expected to be running during
+# normal development:
+#
+#     docker compose up -d
+#
+# Optional "judge0" profile:   self-hosted Judge0 (server, workers, Postgres, Redis)
+# for the Phase 7 coding module.  It is profile-gated and NOT started by default
+# because it DOES NOT WORK on this machine.  Measured, not assumed:
+#
+#   * amd64 emulation is fine — the containers start, /about and /languages answer,
+#     and a submission is accepted and queued.
+#   * The failure is cgroup v1.  Judge0 1.13.1 bundles isolate 1.8.1, which creates
+#     `/sys/fs/cgroup/memory/box-<id>/`.  Docker Desktop's LinuxKit VM boots with
+#     `linuxkit.unified_cgroup_hierarchy=1`, so every controller is bound to the
+#     cgroup v2 unified hierarchy and no v1 hierarchy can be mounted, even as root
+#     in a privileged container.  Every submission dies as status 13 Internal Error.
+#
+# Left in the file so it can be run on an amd64 Linux host with cgroup v1, where it
+# does work.  On this machine use the hosted-Judge0 fallback instead.
+# docs/judge0-notes.md has the full transcript and the fallback instructions.
+#
+#     cp judge0.conf.example judge0.conf     # then edit
+#     docker compose --profile judge0 up -d
+#
+# The application itself (Spring Boot, Vite) runs natively on the host, not here.
+
+name: smartcampus
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # MySQL 8.4 — application database.
+  # Credentials are development-only and intentionally committed; production
+  # supplies them through DB_URL / DB_USERNAME / DB_PASSWORD instead.
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.4
+    container_name: smartcampus-mysql
+    restart: unless-stopped
+    command:
+      # NB: --skip-character-set-client-handshake was REMOVED in MySQL 8.4 and
+      # makes the server abort on startup. Do not add it back.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: smartcampus
+      MYSQL_USER: smartcampus
+      MYSQL_PASSWORD: smartcampus
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # Real check: the server must answer a ping on the network socket as an
+      # authenticated user, not merely have a running process.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Mailpit — development SMTP sink.  Nothing it receives is ever delivered
+  # onward, so OTP and password-reset mail can be exercised safely.
+  #   SMTP    localhost:1025   (SMTP_HOST / SMTP_PORT)
+  #   Web UI  http://localhost:8025
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:v1.28
+    container_name: smartcampus-mailpit
+    restart: unless-stopped
+    environment:
+      # Without MP_DATABASE, Mailpit keeps messages in /tmp and the volume below
+      # does nothing — captured mail would vanish on every restart.
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI
+    volumes:
+      - mailpit-data:/data
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Judge0 — code execution sandbox (Phase 7).  Profile-gated and known-broken on
+  # this machine; see the header comment and docs/judge0-notes.md.
+  #
+  # `platform: linux/amd64` forces emulation on Apple Silicon (this part works).
+  # `privileged: true` is what `isolate` needs to build a cgroup hierarchy per
+  # submission — necessary but NOT sufficient here, because the kernel exposes no
+  # cgroup v1 hierarchy for it to build in.
+  # ---------------------------------------------------------------------------
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    platform: linux/amd64
+    container_name: smartcampus-judge0-server
+    profiles: ["judge0"]
+    restart: unless-stopped
+    privileged: true
+    env_file:
+      - path: ./judge0.conf
+        required: false
+    ports:
+      - "2358:2358"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      judge0-db:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    platform: linux/amd64
+    container_name: smartcampus-judge0-workers
+    profiles: ["judge0"]
+    restart: unless-stopped
+    privileged: true
+    command: ["./scripts/workers"]
+    env_file:
+      - path: ./judge0.conf
+        required: false
+    depends_on:
+      judge0-db:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
+
+  judge0-db:
+    image: postgres:16.2-bookworm
+    platform: linux/amd64
+    container_name: smartcampus-judge0-db
+    profiles: ["judge0"]
+    restart: unless-stopped
+    env_file:
+      - path: ./judge0.conf
+        required: false
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U judge0 -d judge0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  judge0-redis:
+    image: redis:7.0.11-bookworm
+    platform: linux/amd64
+    container_name: smartcampus-judge0-redis
+    profiles: ["judge0"]
+    restart: unless-stopped
+    command:
+      [
+        "bash",
+        "-c",
+        'docker-entrypoint.sh --appendonly no --requirepass "$$REDIS_PASSWORD"',
+      ]
+    env_file:
+      - path: ./judge0.conf
+        required: false
+    volumes:
+      - judge0-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  mysql-data:
+  mailpit-data:
+  judge0-db-data:
+  judge0-redis-data:
