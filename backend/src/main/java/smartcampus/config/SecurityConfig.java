@@ -1,6 +1,7 @@
 package smartcampus.config;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -71,14 +72,18 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final List<String> allowedOrigins;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
             JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-            JwtAccessDeniedHandler jwtAccessDeniedHandler) {
+            JwtAccessDeniedHandler jwtAccessDeniedHandler,
+            @Value("${smartcampus.cors.allowed-origins:http://localhost:5173,http://localhost:5174}")
+                    List<String> allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
+        this.allowedOrigins = allowedOrigins;
     }
 
     @Bean
@@ -118,11 +123,20 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Allows the Vite dev server (default port 5173) to call the API with a Bearer token. */
+    /**
+     * Allows the Vite dev server to call the API with a Bearer token.
+     *
+     * <p>Env-driven rather than hardcoded, because §71 requires production to restrict
+     * the allowlist to the deployed frontend origin — that must be a config change, not
+     * a code change. The default covers both Vite dev ports: Vite silently falls forward
+     * to 5174 when 5173 is already taken by another project, and a missing origin
+     * surfaces as a CORS error that looks like a broken backend rather than a port
+     * collision.
+     */
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(false);
