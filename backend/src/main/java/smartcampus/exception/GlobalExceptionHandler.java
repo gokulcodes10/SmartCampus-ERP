@@ -12,6 +12,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Translates every exception that reaches a controller into the §47 JSON error
@@ -82,6 +83,17 @@ public class GlobalExceptionHandler {
                 "FORBIDDEN",
                 "You do not have permission to perform this action.",
                 request);
+    }
+
+    /**
+     * No handler matched the request path. Spring raises this for any unmapped route;
+     * without an explicit handler the catch-all below would swallow it and answer a
+     * misleading 500 for what is simply a wrong URL.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", "The requested resource does not exist.", request);
     }
 
     /** Last resort: never let an unmapped exception leak internals or a stack trace to the caller. */

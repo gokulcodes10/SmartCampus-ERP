@@ -101,14 +101,14 @@ public class PasswordResetService {
     }
 
     /** Read-only check: is {@code otp} currently valid for {@code email}? Does not consume it. */
-    @Transactional
+    @Transactional(noRollbackFor = BadRequestException.class)
     public PasswordResetResponse verifyOtp(String email, String otp) {
         validateOtp(email, otp);
         return new PasswordResetResponse("Verification code is valid.");
     }
 
     /** Validates {@code otp}, sets {@code newPassword}, and consumes the token. */
-    @Transactional
+    @Transactional(noRollbackFor = BadRequestException.class)
     public PasswordResetResponse resetPassword(String email, String otp, String newPassword) {
         PasswordResetToken token = validateOtp(email, otp);
 
@@ -127,6 +127,16 @@ public class PasswordResetService {
      * failure path - unknown email, no active token, cap already reached, wrong code -
      * throws the identical {@link BadRequestException}; only success returns
      * normally, with the matched, still-unused token.
+     *
+     * <p><b>The callers must declare {@code noRollbackFor = BadRequestException.class}.</b>
+     * The wrong-code path below increments {@code attemptCount} and then throws, and
+     * {@link BadRequestException} is unchecked - under Spring's default rollback rule the
+     * throw would roll back the very same transaction that just saved the increment, so
+     * the counter would never persist and the attempt cap would silently never engage.
+     * That is a brute-force protection bypass, not a cosmetic issue; it was caught by
+     * live verification after the cap was observed accepting a correct code following
+     * five wrong guesses. Do not remove {@code noRollbackFor} from {@link #verifyOtp} or
+     * {@link #resetPassword} without moving this counter into its own transaction.
      */
     private PasswordResetToken validateOtp(String email, String otp) {
         User user = userRepository.findByEmail(email).orElse(null);

@@ -43,6 +43,9 @@ public class SecurityConfig {
     private static final String AUTH_LOGIN = "/api/auth/login";
     private static final String AUTH_PASSWORD_RESET = "/api/auth/password-reset/**";
 
+    /** Admin-only user administration — staff provisioning per clarification G1. */
+    private static final String USERS_ADMIN = "/api/users/**";
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
@@ -69,6 +72,7 @@ public class SecurityConfig {
                         .requestMatchers(HEALTH, HEALTH_SUBPATHS).permitAll()
                         .requestMatchers(AUTH_REGISTER, AUTH_LOGIN).permitAll()
                         .requestMatchers(AUTH_PASSWORD_RESET).permitAll()
+                        .requestMatchers(USERS_ADMIN).hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
