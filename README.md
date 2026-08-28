@@ -487,6 +487,12 @@ Added as each phase ships. See the [Build Status](#build-status) table for curre
 
 ---
 
+## Author
+
+**Shaffan Ahmed**
+
+---
+
 ## License
 
 Not yet specified.
