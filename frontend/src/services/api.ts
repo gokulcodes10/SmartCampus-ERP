@@ -1,15 +1,17 @@
 import axios from "axios";
 
+import { setupAuthInterceptors } from "@/services/authInterceptors";
+
 /**
  * Shared axios instance for all backend calls.
  *
  * Base URL comes from VITE_API_BASE_URL, defaulting to the local backend
  * (see docker-compose.yml / backend application config — port 8080).
  *
- * TODO(Phase 2): add a request interceptor that attaches the JWT from
- * AuthContext (`Authorization: Bearer <token>`) and a response interceptor
- * that redirects to /login on 401. No auth exists yet in Phase 1, so no
- * interceptor is added here — do not stub fake auth ahead of Phase 2.
+ * Phase 2: setupAuthInterceptors attaches the JWT from local storage
+ * (`Authorization: Bearer <token>`) to every request and, on a 401 from an
+ * already-authenticated call, clears it and hands off to AuthContext's
+ * onUnauthorized subscriber — see services/authInterceptors.ts.
  */
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080",
@@ -17,5 +19,7 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+setupAuthInterceptors(api);
 
 export default api;
