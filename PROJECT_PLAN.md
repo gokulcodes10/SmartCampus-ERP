@@ -224,8 +224,8 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 |---|---|---|---|
 | — | Plan | ✅ Done | — |
 | 1 | Foundation | ⚠️ **Partial** — 2 of 3 checkpoint items pass; Judge0 blocked (see note below) | |
-| 2 | Authentication | ⬜ Not started | |
-| 3 | Core Academic | ⬜ Not started | |
+| 2 | Authentication | ✅ Done — checkpoint verified (see note below) | |
+| 3 | Core Academic | ✅ Done — checkpoint verified (see note below) | |
 | 4 | Academic Operations | ⬜ Not started | |
 | 5 | Analytics | ⬜ Not started | |
 | 6 | AI | ⬜ Not started | |
@@ -246,6 +246,117 @@ Cgroup Version 2 and `/proc/cgroups` shows hierarchy 0 for every v1 controller),
 Desktop constraint, **not** an Apple Silicon/amd64 one. Judge0 is profile-gated off by default
 (`docker compose --profile judge0`); details and the hosted fallback are in `docs/judge0-notes.md`.
 Phase 1 stays **Partial** until Phase 7 resolves this via hosted Judge0 or an amd64 Linux host.
+
+**Phase 2 note (verified 2026-08-28).** The checkpoint was observed passing against the real MySQL 8.4
+and Mailpit containers, not inferred. Flyway applied `V2__auth.sql`; student self-registration, login and
+`GET /api/auth/me` work for all three roles over real HTTP; duplicate email returns a clean 409 §47
+envelope; wrong password and unknown email return byte-identical non-enumerating 401s; tampered and
+expired JWTs both return 401 rather than 500; and the OTP reset round trip was driven end to end by
+reading the real message out of Mailpit's API. `./mvnw test` is 14/14 green with no external environment
+variable required.
+
+Three defects were found by verification *after* the build agents reported success, and were fixed:
+
+1. **OTP attempt cap was inert — a brute-force protection bypass.** `validateOtp` incremented
+   `attemptCount`, saved it, then threw an unchecked `BadRequestException` from inside the same
+   `@Transactional` method, so Spring's default rollback rule discarded the increment. `attempt_count`
+   stayed at 0 forever and the cap never engaged: five wrong guesses followed by the correct code still
+   succeeded. Fixed with `noRollbackFor = BadRequestException.class` on `verifyOtp`/`resetPassword`, and
+   documented at the increment site so it is not silently reintroduced.
+2. **No role-restricted endpoint existed**, so "role denial" could not be tested against production code.
+   The real gap was functional, not just a test gap: G1 says faculty and admin accounts are provisioned
+   by an existing admin, but nothing implemented that — accounts had to be inserted into MySQL by hand.
+   Added `POST /api/users` (`UserAdminController` → `UserProvisioningService`) behind
+   `hasRole("ADMIN")`. Note the **first** admin still has to come from seed data (Phase 12, §64).
+3. **Unmapped routes returned 500 instead of 404**, because `GlobalExceptionHandler`'s catch-all
+   `Exception` handler swallowed Spring's `NoResourceFoundException`. Added an explicit handler.
+
+Also added `backend/src/test/resources/application.properties` with a throwaway JWT signing key: the main
+config gives `smartcampus.jwt.secret` an empty default so a real deployment fails fast rather than
+booting with a guessable key, which is correct, but it made `./mvnw test` depend on an exported
+`JWT_SECRET` and would have broken CI for Phase 12.
+
+**Phase 3 note (verified 2026-08-28).** `V3__academic.sql` is applied (Flyway history: 1 baseline + 2
+auth + 3 academic, all `success=1`); `ddl-auto=validate` passed for the full entity graph (Department,
+Course, Subject, Student, Faculty, Enrollment, FacultySubjectAssignment). `./mvnw test` is 28/28 green
+(14 from Phase 2 + 14 new). The checkpoint was driven end to end over real HTTP against the live MySQL
+8.4 container, not inferred: register → `GET /api/students/me` returns a real `PENDING` profile (G1) →
+admin activation flips it to `ACTIVE` and a second activation attempt gets a clean 409 → a student
+reading another student's `/api/students/{id}` gets 404 (not 403, so ID enumeration can't distinguish
+"not yours" from "doesn't exist") → department/course/subject write endpoints are 403 for a non-admin
+and 201 for an admin, with reads open to any authenticated role → `/api/enrollments` and
+`/api/faculty-subject-assignments` are 403 end to end (including GET) for a non-admin. Faculty
+authorization against a specific subject/section (§8, §53) is enforced by `AcademicAccessGuard`
+(`AcademicAccessGuardTest`, 10 adversarial cases) rather than a route rule, since faculty read/write
+routes are role-thin by design — ownership is centralized in `StudentService`/`FacultyService`.
+
+Integration work done to make the four parallel build agents' work function as one system:
+
+1. **`SecurityConfig` route rules added** (the integrator-owned gap every build agent correctly flagged
+   rather than touched): ADMIN-only writes / any-authenticated-role reads for
+   `/api/departments`, `/api/courses`, `/api/subjects`; ADMIN-only end-to-end for `/api/enrollments`
+   and `/api/faculty-subject-assignments`. Student/Faculty profile routes were deliberately left off the
+   matcher list — their role/ownership enforcement is centralized in the service layer, verified live
+   (403 for a bad role, 404 not 403 for cross-ID reads).
+2. **A flaky test was found and fixed, not just re-run until green.** `AcademicAccessGuardTest` derived
+   its unique department/course/subject codes from the last 6 digits of `System.nanoTime()`; on this
+   platform `nanoTime()` has ~1µs resolution, so two `@BeforeEach` invocations landing in the same tick
+   produced the same code and the suite failed on a real duplicate-key error
+   (`departments.uk_departments_code`) — not a database problem, a low-entropy test fixture. Fixed with a
+   per-JVM `AtomicInteger` sequence instead of a clock-derived suffix.
+3. **A real, silent frontend/backend contract drift was found and fixed, not just "reconciled on
+   paper."** The frontend (built before any Phase 3 backend controller existed, against a designed
+   contract) modeled `CourseResponse`/`SubjectResponse`/`StudentResponse`/`FacultyResponse` with nested
+   `department`/`course`/`user` objects; the real backend DTOs are flat (`departmentId` +
+   `departmentName`, etc. — the same convention `StudentResponse`/`FacultyResponse` already used).
+   `npm run build` passed regardless, because TypeScript only checks against the frontend's own
+   (wrong) type declarations — this would have been a runtime-only crash (`Cannot read properties of
+   undefined`) on every Courses/Subjects/Faculty/Students admin page, caught only by reading the actual
+   JSON Phase 3's controllers return over live HTTP and diffing it against the frontend types field by
+   field. Fixed by adding `departmentName` to `CourseResponse` and `courseCode`/`courseName` to
+   `SubjectResponse` on the backend (matching the existing denormalization convention), flattening every
+   frontend type and page to match, and re-verifying with a clean `tsc -b` (which would have failed had
+   any nested-access site been missed) plus a live curl round trip confirming the new fields.
+4. **A real "button that does nothing" bug was found and fixed.** The frontend's student
+   deactivate/reactivate toggle called `PUT /api/students/{id}` with a `status` field; the real
+   `StudentAdminUpdateRequest` has no such field (by design — it protects
+   `chk_students_active_requires_assignment`), so Jackson silently ignored it and the click would have
+   appeared to succeed while leaving status unchanged. Fixed by adding `deactivateStudent`/
+   `reactivateStudent` calling the real `PATCH /api/students/{id}/deactivate` /`.../reactivate` routes,
+   verified live (`ACTIVE → INACTIVE → ACTIVE` over real HTTP). The same page's edit dialog had an
+   editable "register number" field wired to the same dead-on-arrival PUT payload
+   (`StudentAdminUpdateRequest` also excludes `registerNumber` by design); made it a disabled, clearly-
+   labeled display field instead of a control that silently discards input.
+5. **The student/faculty admin search boxes were silently non-functional.** The shared `useServerTable`
+   hook sends the search box's value as a `search` query param (matching Department/Course/Subject);
+   `StudentController`/`FacultyController` read a `q` parameter instead — verified live that `search=`
+   returned an unfiltered page while `q=` filtered correctly. Fixed by translating `search → q` (and
+   dropping the unsupported `sort` param) at the `studentService`/`facultyService` call boundary rather
+   than changing the shared hook other resources rely on.
+
+**Independent verification pass (after the note above was written).** A separate adversarial agent
+re-ran the checkpoint from scratch and the suite is now **31/31** (the note above says 28/28; three more
+tests were added: SQL-level pagination with a disjoint-page assertion, and student/faculty escalation
+sweeps across every admin route). Pagination was confirmed genuinely server-side by reading Hibernate's
+generated SQL — a real `limit ?, ?` plus a separate `count(...)`, and a real `WHERE ... LIKE` for search
+— rather than by trusting the envelope shape. No password or hash appeared in ~30 inspected response
+bodies. No security bypass was found, and the test data created during the pass was cleaned up.
+
+**Carry this into Phase 4.** Checkpoint item 2 — "faculty cannot modify subjects they are not assigned
+to" — currently passes *by role, not by assignment*. Phase 3 gives faculty no subject-write capability
+at all (subject writes are `hasRole("ADMIN")`), so faculty A's `PUT` on an unassigned subject is denied
+before any assignment check runs. `AcademicAccessGuard` is fully built and unit-tested against 10
+adversarial cases, but **no production code calls it yet** — every reference outside its own file is a
+javadoc mention. Its first live consumer is Phase 4, where faculty finally get write endpoints for
+attendance and marks. The assignment-scoped *write* guarantee is therefore proven only at the unit level
+today; the read-side scoping (faculty sees exactly the students they teach, 404 for everyone else) is
+proven live over HTTP. **Phase 4 must route every faculty write through this guard**, and re-verify
+§8/§53 against endpoints faculty can actually reach.
+
+Left as a documented gap rather than fixed (both non-breaking — no crash, no silent wrong result, just
+a missing capability): `StudentController`/`FacultyController` list endpoints hardcode `Sort.by(DESC,
+"id")` and accept no `sort` query parameter, unlike Department/Course/Subject's real `Pageable` support —
+the admin Students/Faculty tables are always newest-first regardless of the column headers.
 
 ---
 

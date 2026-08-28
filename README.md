@@ -10,15 +10,15 @@ Every feature is backed by a real API, a real database table and real persistenc
 
 ## Build Status
 
-🚧 **In development.** Phase 1 (Foundation) is complete and verified: the backend boots against real MySQL with Flyway migrations applied, and the frontend builds and serves. Judge0 is the one exception — it cannot run on Docker Desktop (see [Judge0](#judge0) below). Feature work begins in Phase 2.
+🚧 **In development.** Phases 1–3 are complete and verified against real infrastructure: the backend boots against real MySQL with all three Flyway migrations applied, authentication works end to end (registration, JWT login, role-based access and OTP password reset delivered through a real SMTP sink), and the academic core — departments, courses, subjects, students, faculty, enrolments and faculty–subject assignments — is administrable through real admin screens with server-side search, filtering and pagination. The backend test suite is **31/31 green**. Judge0 remains the one blocked component — it cannot run on Docker Desktop (see [Judge0](#judge0) below). Feature work continues in Phase 4.
 
 Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, which also records the confirmed technical decisions and the ten clarifications (G1–G10) resolving gaps in the original scope document.
 
 | Phase | Module | Status |
 |---|---|---|
 | 1 | Foundation — toolchain, Docker services, scaffolding | ⚠️ Done, except Judge0 |
-| 2 | Authentication — JWT, roles, OTP password reset | ⬜ Not started |
-| 3 | Core Academic — departments, courses, subjects, students, faculty | ⬜ Not started |
+| 2 | Authentication — JWT, roles, OTP password reset | ✅ Done |
+| 3 | Core Academic — departments, courses, subjects, students, faculty | ✅ Done |
 | 4 | Academic Operations — attendance, exams, marks, grading | ⬜ Not started |
 | 5 | Analytics — GPA/CGPA, performance trends, risk detection | ⬜ Not started |
 | 6 | AI — study assistant, study plans, practice questions | ⬜ Not started |
@@ -30,6 +30,8 @@ Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, 
 | 12 | Finalization — Swagger, seed data, testing, deployment | ⬜ Not started |
 
 The setup instructions below describe the intended workflow. Commands that depend on code from a phase that has not shipped will not work yet.
+
+Every checkpoint above was verified by actually performing it — booting the application against the real MySQL container, driving the API over HTTP, and reading OTP mail out of Mailpit — never by inspection alone. Where verification found defects, both the defect and its root cause are recorded in `PROJECT_PLAN.md` rather than quietly fixed.
 
 ---
 
@@ -297,7 +299,7 @@ Each request passes through a JWT filter that extracts and validates the token, 
 
 **Account provisioning.** Self-registration is limited to students; it creates a pending profile that an administrator activates and links to a department, course and register number. Faculty and administrator accounts are provisioned by an existing administrator. This closes the role-escalation hole that an open, role-accepting registration endpoint would otherwise leave. (See clarification G1 in `PROJECT_PLAN.md`.)
 
-**Password reset** is OTP-based over email. OTPs are stored hashed, expire on a configurable timer, are single-use, cap verification attempts, and respond identically whether or not the account exists, so the endpoint cannot be used to enumerate accounts.
+**Password reset** is OTP-based over email. OTPs are stored hashed, expire on a configurable timer, are single-use, cap verification attempts, and respond identically whether or not the account exists, so the endpoint cannot be used to enumerate accounts. In development the mail is delivered to Mailpit and can be read at http://localhost:8025.
 
 ---
 
@@ -306,8 +308,8 @@ Each request passes through a JWT filter that extracts and validates the token, 
 With Docker services already up:
 
 ```bash
-# Terminal 1 — backend
-cd backend && ./mvnw spring-boot:run
+# Terminal 1 — backend (JWT_SECRET is required; there is no default, by design)
+cd backend && JWT_SECRET="<a strong local secret>" ./mvnw spring-boot:run
 
 # Terminal 2 — frontend
 cd frontend && npm run dev
@@ -317,25 +319,45 @@ cd frontend && npm run dev
 |---|---|
 | Application | http://localhost:5173 |
 | API | http://localhost:8080 |
-| Swagger UI | http://localhost:8080/swagger-ui.html |
 | Mailpit inbox | http://localhost:8025 |
+| Swagger UI | http://localhost:8080/swagger-ui.html *(Phase 12)* |
+
+**Creating the first administrator.** Self-registration only ever creates a student, and provisioning staff accounts requires an existing admin — so the very first admin has to be promoted by hand:
+
+```bash
+# register normally at /register, then:
+docker exec smartcampus-mysql mysql -usmartcampus -psmartcampus smartcampus \
+  -e "UPDATE users SET role='ADMIN' WHERE email='you@example.com';"
+```
+
+Seed data that removes this manual step is Phase 12 scope.
 
 ---
 
 ## API Documentation
 
-Interactive OpenAPI documentation is served at `/swagger-ui.html`, with JWT authorization enabled so endpoints can be exercised as a real authenticated user.
+Interactive OpenAPI documentation at `/swagger-ui.html` arrives in Phase 12; until then the endpoints below are exercised directly over HTTP.
 
-Resource groups:
+**Live today (Phases 2–3):**
 
 ```
-/api/auth          /api/users         /api/students      /api/faculty
-/api/admin         /api/departments   /api/courses       /api/subjects
-/api/enrollments   /api/attendance    /api/marks         /api/analytics
-/api/ai            /api/coding        /api/problems      /api/contests
-/api/leaderboard   /api/companies     /api/jobs          /api/applications
-/api/resumes       /api/interviews    /api/notifications /api/announcements
+/api/auth          register, login, me, password-reset (request / verify / reset)
+/api/users         admin-only account provisioning (faculty and admin accounts)
+/api/departments   /api/courses      /api/subjects
+/api/students      /api/faculty      /api/enrollments
+/api/faculty-subject-assignments
 ```
+
+**Planned in later phases:**
+
+```
+/api/attendance    /api/marks        /api/analytics     /api/ai
+/api/coding        /api/problems     /api/contests      /api/leaderboard
+/api/companies     /api/jobs         /api/applications  /api/resumes
+/api/interviews    /api/notifications /api/announcements
+```
+
+Writes to reference data (departments, courses, subjects) and all enrolment and assignment management are `ADMIN`-only; reads are open to any authenticated role. Students may read and update only their own profile — requesting another student's record returns `404` rather than `403`, so an ID cannot be probed to distinguish "not yours" from "does not exist".
 
 Errors use a consistent envelope, and stack traces are never returned to clients:
 
@@ -358,21 +380,22 @@ Large collections are paginated, returning `content`, `page`, `size`, `totalElem
 ### Backend
 ```bash
 cd backend
-./mvnw test                  # unit and slice tests
+./mvnw test                  # 31/31 green as of Phase 3
 ./mvnw verify                # full suite including integration tests
 ```
 
-Repository and integration tests run against a real MySQL instance via Testcontainers rather than an in-memory substitute, so migrations and SQL dialect behaviour are genuinely exercised.
+Repository and integration tests run against a real MySQL instance via Testcontainers rather than an in-memory substitute, so migrations and SQL dialect behaviour are genuinely exercised. No environment variables are required — `src/test/resources/application.properties` supplies a throwaway JWT signing key so a fresh clone can run the suite immediately.
 
-Coverage targets registration, login, duplicate email, invalid credentials, JWT validation, role authorization, cross-user access attempts, attendance calculation, marks validation, placement eligibility, duplicate applications, coding submission verdicts and notification delivery.
+Current coverage: registration, login, duplicate email, non-enumerating invalid credentials, JWT validation including tampered and expired tokens, role denial against a real admin-only endpoint, OTP reset round trip with attempt-cap enforcement, cross-student access attempts across every route that returns student data, faculty subject/section scoping, privilege escalation sweeps, SQL-level pagination, and the G1 activation flow. Attendance, marks, placement, coding and notification coverage arrives with the phases that build them.
 
 ### Frontend
+No test runner is installed yet — frontend tests are Phase 12 scope. The build and linter are the current gates:
+
 ```bash
 cd frontend
-npm test
+npm run build                # tsc -b + vite build
+npm run lint                 # oxlint
 ```
-
-Covers the authentication flow, API integration, form validation and key components.
 
 ---
 

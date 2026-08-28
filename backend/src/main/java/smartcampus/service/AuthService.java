@@ -11,9 +11,12 @@ import smartcampus.dto.LoginRequest;
 import smartcampus.dto.RegisterRequest;
 import smartcampus.dto.UserResponse;
 import smartcampus.entity.Role;
+import smartcampus.entity.Student;
+import smartcampus.entity.StudentStatus;
 import smartcampus.entity.User;
 import smartcampus.exception.DuplicateResourceException;
 import smartcampus.exception.InvalidCredentialsException;
+import smartcampus.repository.StudentRepository;
 import smartcampus.repository.UserRepository;
 import smartcampus.security.JwtService;
 
@@ -39,12 +42,17 @@ public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
+    private final StudentRepository studentRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     public AuthService(
-            UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+            UserRepository userRepository,
+            StudentRepository studentRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService) {
         this.userRepository = userRepository;
+        this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
@@ -52,8 +60,14 @@ public class AuthService {
     /**
      * Self-registers a new {@code STUDENT} account. The role is never taken from the
      * caller (PROJECT_PLAN.md clarification G1) — it is hardcoded here regardless of
-     * anything the request might otherwise imply. Creates the {@link User} row only;
-     * the pending Student profile is out of this scope (Phase 3).
+     * anything the request might otherwise imply.
+     *
+     * <p>Creates the {@link User} row and, in the same transaction, the matching
+     * {@code PENDING} {@link Student} profile — department, course, register number and
+     * current semester all {@code null} — that the Phase 3 admin activation flow (G1)
+     * later fills in via {@code StudentService.activate}. Both inserts succeed or fail
+     * together: a {@link User} can never exist without its {@link Student} row, so the
+     * admin pending-activation queue is always complete.
      */
     @Transactional
     public UserResponse register(RegisterRequest request) {
@@ -79,7 +93,13 @@ public class AuthService {
             throw new DuplicateResourceException("An account with this email already exists.");
         }
 
-        log.info("Registered new STUDENT account: {}", user.getEmail());
+        Student pendingProfile = Student.builder()
+                .user(user)
+                .status(StudentStatus.PENDING)
+                .build();
+        studentRepository.save(pendingProfile);
+
+        log.info("Registered new STUDENT account: {} (pending student profile created)", user.getEmail());
         return UserResponse.from(user);
     }
 

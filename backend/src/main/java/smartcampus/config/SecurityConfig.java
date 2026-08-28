@@ -3,6 +3,7 @@ package smartcampus.config;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -46,6 +47,27 @@ public class SecurityConfig {
     /** Admin-only user administration — staff provisioning per clarification G1. */
     private static final String USERS_ADMIN = "/api/users/**";
 
+    /**
+     * Phase 3 core-academic routes. Department/Course/Subject reads are open to any
+     * authenticated role (students and faculty browse the catalog); writes are
+     * ADMIN-only. Enrollment and faculty-subject-assignment management is admin-only
+     * end to end — faculty authorization for their own assignments is a service-layer
+     * concern ({@code AcademicAccessGuard}, from Phase 4 onward), not a route rule here.
+     * Student and Faculty profile routes ({@code /api/students/**}, {@code
+     * /api/faculty/**}) are deliberately left off the matcher list below: role and
+     * ownership are enforced centrally in {@code StudentService}/{@code FacultyService}
+     * (see their javadoc) and both fall through to the {@code anyRequest().authenticated()}
+     * rule, same as today.
+     */
+    private static final String DEPARTMENTS = "/api/departments";
+    private static final String DEPARTMENTS_SUBPATHS = "/api/departments/**";
+    private static final String COURSES = "/api/courses";
+    private static final String COURSES_SUBPATHS = "/api/courses/**";
+    private static final String SUBJECTS = "/api/subjects";
+    private static final String SUBJECTS_SUBPATHS = "/api/subjects/**";
+    private static final String ENROLLMENTS_ADMIN = "/api/enrollments/**";
+    private static final String FACULTY_SUBJECT_ASSIGNMENTS_ADMIN = "/api/faculty-subject-assignments/**";
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
@@ -73,6 +95,20 @@ public class SecurityConfig {
                         .requestMatchers(AUTH_REGISTER, AUTH_LOGIN).permitAll()
                         .requestMatchers(AUTH_PASSWORD_RESET).permitAll()
                         .requestMatchers(USERS_ADMIN).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, DEPARTMENTS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, DEPARTMENTS_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, DEPARTMENTS_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, DEPARTMENTS, DEPARTMENTS_SUBPATHS).authenticated()
+                        .requestMatchers(HttpMethod.POST, COURSES).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, COURSES_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, COURSES_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, COURSES, COURSES_SUBPATHS).authenticated()
+                        .requestMatchers(HttpMethod.POST, SUBJECTS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, SUBJECTS_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, SUBJECTS_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, SUBJECTS, SUBJECTS_SUBPATHS).authenticated()
+                        .requestMatchers(ENROLLMENTS_ADMIN).hasRole("ADMIN")
+                        .requestMatchers(FACULTY_SUBJECT_ASSIGNMENTS_ADMIN).hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)

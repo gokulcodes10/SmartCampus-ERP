@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -94,6 +95,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNoResourceFound(
             NoResourceFoundException ex, HttpServletRequest request) {
         return build(HttpStatus.NOT_FOUND, "NOT_FOUND", "The requested resource does not exist.", request);
+    }
+
+    /**
+     * Database constraint violations (e.g. FK constraint violated when trying to delete
+     * an entity with dependents). Produces a useful message to the caller instead of a
+     * raw database error.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex, HttpServletRequest request) {
+        String message = "Operation failed due to data integrity constraints. "
+                + "The entity may have dependents that prevent this operation.";
+        return build(HttpStatus.CONFLICT, "CONFLICT", message, request);
     }
 
     /** Last resort: never let an unmapped exception leak internals or a stack trace to the caller. */
