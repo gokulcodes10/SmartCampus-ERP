@@ -10,7 +10,7 @@ Every feature is backed by a real API, a real database table and real persistenc
 
 ## Build Status
 
-🚧 **In development.** Phases 1–3 are complete and verified against real infrastructure: the backend boots against real MySQL with all three Flyway migrations applied, authentication works end to end (registration, JWT login, role-based access and OTP password reset delivered through a real SMTP sink), and the academic core — departments, courses, subjects, students, faculty, enrolments and faculty–subject assignments — is administrable through real admin screens with server-side search, filtering and pagination. The backend test suite is **31/31 green**. Judge0 remains the one blocked component — it cannot run on Docker Desktop (see [Judge0](#judge0) below). Feature work continues in Phase 4.
+🚧 **In development.** Phases 1–11 are complete and verified against real infrastructure — the backend boots against real MySQL with all eleven Flyway migrations applied, and every phase checkpoint was proven by actually performing it: driving the API over HTTP, reading OTP mail out of Mailpit, and making a real Groq call grounded in a student's actual academic record. The backend test suite is **299/299 green**. Judge0 remains the one blocked component — the coding module is fully built against the real Judge0 API contract, but live execution cannot run on Docker Desktop (see [Judge0](#judge0) below), so that one checkpoint is deferred rather than faked. Phase 12 (finalization) remains.
 
 Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, which also records the confirmed technical decisions and the ten clarifications (G1–G10) resolving gaps in the original scope document.
 
@@ -19,14 +19,14 @@ Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, 
 | 1 | Foundation — toolchain, Docker services, scaffolding | ⚠️ Done, except Judge0 |
 | 2 | Authentication — JWT, roles, OTP password reset | ✅ Done |
 | 3 | Core Academic — departments, courses, subjects, students, faculty | ✅ Done |
-| 4 | Academic Operations — attendance, exams, marks, grading | ⬜ Not started |
-| 5 | Analytics — GPA/CGPA, performance trends, risk detection | ⬜ Not started |
-| 6 | AI — study assistant, study plans, practice questions | ⬜ Not started |
-| 7 | Coding — playground, problems, submissions, contests | ⬜ Not started |
-| 8 | Placement — companies, drives, eligibility, applications | ⬜ Not started |
-| 9 | Resume — builder, templates, PDF export | ⬜ Not started |
-| 10 | Interview — question bank, scheduling | ⬜ Not started |
-| 11 | Real-Time — WebSocket notifications, announcements | ⬜ Not started |
+| 4 | Academic Operations — attendance, exams, marks, grading | ✅ Done |
+| 5 | Analytics — GPA/CGPA, performance trends, risk detection | ✅ Done |
+| 6 | AI — study assistant, study plans, practice questions | ✅ Done |
+| 7 | Coding — playground, problems, submissions, contests | ⚠️ Built; execution checkpoint deferred (Judge0) |
+| 8 | Placement — companies, drives, eligibility, applications | ✅ Done |
+| 9 | Resume — builder, templates, PDF export | ✅ Done |
+| 10 | Interview — question bank, scheduling | ✅ Done |
+| 11 | Real-Time — WebSocket notifications, announcements | ✅ Done |
 | 12 | Finalization — Swagger, seed data, testing, deployment | ⬜ Not started |
 
 The setup instructions below describe the intended workflow. Commands that depend on code from a phase that has not shipped will not work yet.
@@ -338,24 +338,24 @@ Seed data that removes this manual step is Phase 12 scope.
 
 Interactive OpenAPI documentation at `/swagger-ui.html` arrives in Phase 12; until then the endpoints below are exercised directly over HTTP.
 
-**Live today (Phases 2–3):**
+**Live today (Phases 2–11):**
 
 ```
 /api/auth          register, login, me, password-reset (request / verify / reset)
-/api/users         admin-only account provisioning (faculty and admin accounts)
+/api/users         admin-only account provisioning
 /api/departments   /api/courses      /api/subjects
 /api/students      /api/faculty      /api/enrollments
 /api/faculty-subject-assignments
+/api/attendance    /api/exams        /api/marks        /api/grade-bands
+/api/analytics     /api/performance-bands
+/api/ai            conversations, explanations, study plans, practice questions
+/api/problems      /api/coding       /api/contests     /api/leaderboard
+/api/companies     /api/jobs         /api/applications
+/api/resumes       /api/interviews
+/api/notifications /api/announcements     (plus the JWT-authenticated WebSocket)
 ```
 
-**Planned in later phases:**
-
-```
-/api/attendance    /api/marks        /api/analytics     /api/ai
-/api/coding        /api/problems     /api/contests      /api/leaderboard
-/api/companies     /api/jobs         /api/applications  /api/resumes
-/api/interviews    /api/notifications /api/announcements
-```
+**Not yet built:** Swagger UI and seed data (Phase 12).
 
 Writes to reference data (departments, courses, subjects) and all enrolment and assignment management are `ADMIN`-only; reads are open to any authenticated role. Students may read and update only their own profile — requesting another student's record returns `404` rather than `403`, so an ID cannot be probed to distinguish "not yours" from "does not exist".
 

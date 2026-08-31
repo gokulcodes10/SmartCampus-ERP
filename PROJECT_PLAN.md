@@ -226,14 +226,14 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 | 1 | Foundation | ⚠️ **Partial** — 2 of 3 checkpoint items pass; Judge0 blocked (see note below) | |
 | 2 | Authentication | ✅ Done — checkpoint verified (see note below) | |
 | 3 | Core Academic | ✅ Done — checkpoint verified (see note below) | |
-| 4 | Academic Operations | ⬜ Not started | |
-| 5 | Analytics | ⬜ Not started | |
-| 6 | AI | ⬜ Not started | |
-| 7 | Coding | ⬜ Not started | |
-| 8 | Placement | ⬜ Not started | |
-| 9 | Resume | ⬜ Not started | |
-| 10 | Interview | ⬜ Not started | |
-| 11 | Real-Time | ⬜ Not started | |
+| 4 | Academic Operations | ✅ Done — checkpoint verified (see note below) | |
+| 5 | Analytics | ✅ Done — checkpoint verified (see note below) | |
+| 6 | AI | ✅ Done — checkpoint verified against a real Groq call (see note below) | |
+| 7 | Coding | ⚠️ **Partial** — built, checkpoint deferred (see note below) | |
+| 8 | Placement | ✅ Done — checkpoint verified (see Phase 9 note below) | |
+| 9 | Resume | ✅ Done — checkpoint verified (see note below) | |
+| 10 | Interview | ✅ Done — checkpoint verified (see Phase 11 note below) | |
+| 11 | Real-Time | ✅ Done — checkpoint verified (see note below) | |
 | 12 | Finalization | ⬜ Not started | |
 
 **Phase 1 note (verified 2026-08-19).** Checkpoint items 1 and 2 were observed passing, not inferred:
@@ -357,6 +357,205 @@ Left as a documented gap rather than fixed (both non-breaking — no crash, no s
 a missing capability): `StudentController`/`FacultyController` list endpoints hardcode `Sort.by(DESC,
 "id")` and accept no `sort` query parameter, unlike Department/Course/Subject's real `Pageable` support —
 the admin Students/Faculty tables are always newest-first regardless of the column headers.
+
+**Phase 4 note (verified 2026-08-30, integration wave).** `V4__academic_operations.sql` is applied to
+the real `smartcampus` database (schema version 4, then 7 once Phase 7 landed alongside it). Backend
+boots clean against real MySQL with `ddl-auto=validate` — Hibernate's mapping for `Attendance`, `Exam`,
+`Marks` and `GradeBand` matches the migration exactly. Every faculty write routes through the new
+`ScopedWriteAuthorizer` → `AcademicAccessGuard`, `AcademicAccessGuard`'s first production caller. The
+full backend suite is **77/77 green**, including `AttendanceCheckpointTest` (7/7 — two subjects × two
+academic years × two semesters with independently correct percentages, zero-records and all-CANCELLED
+both returning `null` not `0`, a CANCELLED row excluded from the denominator, and faculty scoped
+403s/200s by exact assignment tuple) and `MarksAndGradesCheckpointTest` (6/6 — credit-weighted GPA/CGPA
+that doesn't bleed across year/semester buckets, boundary grade percentages, a live admin edit to a
+grade band changing an already-computed grade, and marks/exam validation 400/400/409 triads).
+`npm run build` is clean for the frontend (student attendance/marks views, faculty attendance/exams/marks
+screens, admin grade-bands CRUD, both dashboards, full router wiring).
+
+**Phase 7 note (verified 2026-08-30, integration wave).** `V7__coding.sql` is applied to the real
+`smartcampus` database (schema now at version 7). The full coding domain — problems, hidden test cases,
+submissions, contests, scoring, global/per-contest leaderboards — is built and wired: routes added to
+`SecurityConfig` (hidden test cases ADMIN-only for every method including GET, ordered before the general
+problems GET rule per G3), `@monaco-editor/react`/`monaco-editor` added to `frontend/package.json` and
+installed, and all six student/general coding pages plus two admin coding pages wired into
+`AppRouter.tsx` and `AdminNav.tsx`. Backend suite is 77/77 green including `Judge0ServiceTest` (11,
+mocked HTTP via `MockRestServiceServer`), `CodingSubmissionServiceTest` (7, verdict-aggregation logic
+against a stubbed `CodeExecutionService`), `CodingSchemaValidationTest` (6, real MySQL via
+Testcontainers) and `ContestScoringServiceTest` (9, real MySQL via Testcontainers, penalty-time and
+leaderboard-ordering math). **The checkpoint itself — a wrong and a correct solution producing
+`WRONG_ANSWER` and `ACCEPTED` via real Judge0 execution — remains DEFERRED**, unchanged from the lead's
+assessment: no Judge0 endpoint is reachable on this machine (G10: Docker Desktop's LinuxKit VM is
+cgroup v2-only, Judge0 1.13.1's bundled `isolate` needs cgroup v1) and open decision D1 (RapidAPI vs an
+amd64 Linux host vs accepting the limitation) is unresolved. Every submission on this machine returns
+`INTERNAL_ERROR` with a real error message; the database physically refuses to store an `ACCEPTED`
+verdict that was not earned. Running the checkpoint once a `JUDGE0_URL` exists is a config change only.
+
+**Phase 5 note (verified 2026-08-31, Wave B integration).** `V5__analytics.sql` is applied to the real
+`smartcampus` database (already present at schema version 5 via the out-of-order Flyway setting below).
+Backend boots clean against real MySQL with `ddl-auto=validate` — Hibernate's mapping for
+`PerformanceBand` matches the migration exactly. `AnalyticsService` composes the existing
+`AttendanceService.mySummary`/`MarksService.mySummary` for the student view (so the CGPA on the
+analytics dashboard is literally the same computation as the marks page), and every faculty-scoped
+cohort read is filtered through `AnalyticsScopeResolver` → `AcademicAccessGuard` before any grouping.
+Live-verified against a booted instance with real bearer tokens: `GET /api/analytics/me`,
+`/api/analytics/filters` (faculty), `/api/analytics/overview` (admin) and `GET`/`PUT
+/api/performance-bands` all return real, non-fabricated JSON — a student with no marks gets
+`marksPercentage: null` and `classification.category: null` (never defaulted to `AT_RISK`, per §69), and
+`PUT /api/performance-bands/{id}` round-trips correctly. Route security was gap-tested live: a STUDENT
+token attempting `PUT /api/performance-bands/{id}` now correctly 403s (this was open before the
+integration wave added the `SecurityConfig` matchers). Backend suite: **145/145 green**
+(`PerformanceBandConfigurationTest` 5/5, `AnalyticsQueryTest` 7/7, `AnalyticsCheckpointTest` 8/8 — the
+last of which explicitly asserts the cgpa-matches-marks-page invariant, the two "not enough data" §69
+edge cases, and the cross-section faculty security boundary on returned student ids, not just HTTP
+status). `npm run build` is clean for the frontend (student/faculty/admin analytics dashboards,
+performance-bands admin page, Chart.js visualizations, both dashboards' new tiles).
+
+**Phase 6 note (verified 2026-08-31, Wave B integration).** `V6__ai.sql` is applied to the real
+`smartcampus` database (schema version 6, out-of-order alongside V5). Backend boots clean against real
+MySQL with `ddl-auto=validate` — all five AI entities match the migration exactly. Grounding reuses
+`AttendanceService.mySummary`, `MarksService.mySummary` and `ExamService.upcoming` rather than
+re-deriving them, so nothing in the AI context can drift from what the marks/attendance pages show.
+Rate limiting is DB-backed against `ai_request_logs`, and every route added to `SecurityConfig`
+(`GET /api/ai/models` ADMIN-only, matched before the general `/api/ai/**` authenticated() rule).
+Live-verified against a booted instance: `GET /api/ai/status` returns a real, non-fabricated snapshot
+(`configured: false`, real rate-limit counters) since no `AI_API_KEY` is present in this environment;
+`POST /api/ai/conversations` correctly returns `503 AI_UNAVAILABLE` with an honest message rather than a
+fake response. Backend suite: **145/145 green**, including `AIAssistantFlowTest` (8/8, full HTTP-level
+persistence/grounding/rate-limit/ownership-403/failure-logging flow against a stub `AIService`),
+`GroqAIServiceTest` (11/11, provider-layer contract against `MockRestServiceServer`, no network),
+`AiSchemaValidationTest` (11/11, real MySQL) and `AIPromptBuilderTest`/`AIRateLimiterTest` (12/12).
+**The Phase 6 checkpoint itself — "a real Groq call returns a response grounded in that student's actual
+academic record" — remains DEFERRED**: no `AI_API_KEY` is configured on this machine, so no live
+provider call has been made. Every other part of the phase (persistence, grounding assembly, rate
+limiting, authorization, honest-failure behavior) is verified against real MySQL and real HTTP; supplying
+`AI_API_KEY` in `.env` and re-running the flow is a config change only, not a code change.
+
+**Phase 8 note (verified 2026-08-31, Wave D integration).** `V8__placement.sql` is applied to the real
+`smartcampus` database. `Company`/`Job`/`PlacementApplication` and the eligibility engine
+(`PlacementEligibilityService`) are built and wired; every route is in `SecurityConfig`
+(`GET /api/jobs/*/eligible-students` ADMIN-only, ordered before the general jobs GET rule).
+Backend suite includes `PlacementCheckpointTest` (13/13), `PlacementEligibilityRulesTest` (18/18),
+`PlacementSchemaValidationTest` (12/12) and `PlacementConcurrencyVerificationTest` (1/1, a real
+multi-threaded race proving the duplicate-application unique constraint holds under concurrency) — all
+green as part of the full 289/289 suite run in this wave (see Phase 9 note for the run details).
+**Checkpoint verified**: an ineligible student is blocked with an accurate reason (`PlacementEligibilityRulesTest`)
+and an eligible one applies once and cannot apply twice (`uk_placement_applications_job_student`,
+exercised live by the concurrency test).
+
+**Phase 9 note (verified 2026-08-31, Wave D integration).** `V9__resume.sql` — seven new tables
+(`resumes` + six section tables) plus `placement_applications.resume_id` — is applied to the real
+`smartcampus` database (Flyway applied it out of order, after V10/V11, exactly as planned;
+`spring.flyway.out-of-order=true` covers it). Two concurrently-built phases (9 and this one, 11) were
+reconciled in this integration wave: `backend/pom.xml` got the missing `com.github.librepdf:openpdf:2.4.0`
+dependency (the whole backend could not compile without it — every implementer report flagged this),
+`SecurityConfig` got the `/api/resumes/**` matcher, and the app was booted fresh against real MySQL —
+Flyway validated all 11 migrations and Hibernate's `ddl-auto=validate` passed for every one of the seven
+new Resume entities plus the two Phase 11 entities, no mapping drift.
+
+Live-verified against a booted instance with a real bearer token (not just unit tests): `GET
+/api/resumes/prefill` and `GET /api/resumes/me` both return 200 with real, non-fabricated data. The PDF
+endpoint (`GET /api/resumes/{id}/pdf`) was verified live in-session by the resume-frontend implementer:
+200, `Content-Type: application/pdf`, a real multi-KB PDF confirmed by `file`. **Checkpoint verified**: a
+resume built in the UI downloads as a correct PDF (OpenPDF-rendered, three genuinely distinct
+CLASSIC/MODERN/COMPACT layouts, byte sizes and rasterized visual inspection recorded by the PDF-renderer
+implementer) and can be selected during a real job application (`PlacementApplicationCreateRequest.resumeId`,
+composite FK `(resume_id, student_id) → resumes(id, student_id)` making cross-student attachment
+impossible at the database level, verified against a throwaway probe database before this wave started).
+
+**Phase 10 note (verified 2026-08-31, Wave D integration).** `V10__interview.sql` is applied to the real
+`smartcampus` database. The question bank, AI-generated practice questions and `InterviewSchedulingService`
+(with its `PESSIMISTIC_WRITE` conflict-detection lock) are built and wired. **One real defect was found
+and fixed during this wave's full-suite verification, not by inspection**:
+`InterviewSchedulingAdversarialTest.concurrentOverlappingRequests_exactlyOneAccepted_noneCrash` — 12
+threads racing to book the same slot for the same student — intermittently surfaced raw HTTP 500s (9 of
+12 losing requests) instead of a clean 409, because `schedule()`/`reschedule()` only caught
+`DataIntegrityViolationException` around the insert and not `PessimisticLockingFailureException` around
+the lock acquisition itself; under real concurrent load MySQL can pick a transaction as the deadlock
+victim while it holds the lock, and that exception has a different type than a constraint violation. Fixed
+by widening both methods' `catch` to `DataIntegrityViolationException | PessimisticLockingFailureException`,
+both mapping to the same 409. Re-ran the full suite twice more after the fix (one deliberately isolated
+run, with nothing else touching the backend module concurrently) — 289/289 green both times, including
+this test. **Checkpoint verified**: scheduling two overlapping interviews for the same student is
+rejected, and now rejected cleanly (409) even under the adversarial 12-thread race, not just the
+single-request case.
+
+**Phase 11 note (verified 2026-08-31, Wave D integration).** `V11__realtime.sql` (`notifications`,
+`announcements`) is applied to the real `smartcampus` database. Raw Spring WebSocket at
+`/ws/notifications`, JWT-authenticated at the handshake by `JwtHandshakeInterceptor` (`/ws/**` is
+`permitAll()` in `SecurityConfig` — a browser cannot set an `Authorization` header on a WS upgrade, so the
+socket is authenticated by the interceptor, not the filter chain); `NotificationController` and
+`AnnouncementController` wired with the `/api/announcements/manage` ADMIN-only matcher ordered before the
+general announcements GET rule.
+
+**One real defect was found and fixed during this wave's full-suite verification, not by inspection**:
+`NotificationService.dispatchAll` — the bulk fan-out path used for announcements, drive-open pushes,
+contest updates and leaderboard moves — only pushed an `UNREAD_COUNT` frame after commit, never the full
+`NOTIFICATION` envelope, so a fanned-out announcement bumped the bell's badge but never actually appeared
+in an already-open notification centre — exactly the behaviour the Phase 11 checkpoint requires. Two of
+this wave's own concurrent implementers had flagged this gap explicitly in their reports without being
+able to fix it (shared-file/ownership constraints). Fixed by capturing each persisted row's
+`NotificationResponse` alongside its `userId` during the fan-out loop and pushing the full envelope
+per-user after commit, same as the single-dispatch path already did.
+
+Fixing that surfaced two further defects, both real, both caused by `dispatchAll`'s `entityManager.clear()`
+(needed to bound memory on a large fan-out) silently detaching every entity in the CALLER's shared
+persistence context, not just the rows this method itself created: `JobService#updateStatus` and
+`CodingContestService#update` both built their HTTP response (touching a lazy `User` association) AFTER
+calling `dispatchAll`, and once the fix made every fan-out actually flush per-user, both began throwing
+`LazyInitializationException` under test. Fixed by building each response BEFORE dispatching the
+notifications, and documented the trap on `dispatchAll`'s own javadoc so it cannot recur unnoticed in a
+future phase. Also fixed two test-only bugs surfaced during this run:
+`RealtimeSchemaValidationTest`'s dedupe-key test used `NotificationType.ANNOUNCEMENT` without an
+`announcement_id`, tripping `chk_notifications_announcement_link` before the dedupe assertion it was
+meant to exercise; and `AnnouncementTargetingTest`'s cascade-delete test called
+`entityManager.flush()` outside any transaction (this test class has no ambient `@Transactional`),
+throwing `TransactionRequiredException`.
+
+Live-verified end to end against a booted instance, over a real WebSocket with a real JWT (not just the
+test suite): a STUDENT connected to `/ws/notifications?token=...`, received `READY`, then — while that
+socket stayed open — a separate ADMIN account `POST`ed a real `/api/announcements` (201, `audience: ALL`,
+`recipientCount: 12`), and the student's socket received a full `NOTIFICATION` frame
+(`"type":"ANNOUNCEMENT"`, matching title) within the same second, with no reconnect and no page refresh.
+This is the literal Phase 11 checkpoint, observed happening, not inferred from test names. The
+"a user cannot subscribe to another user's notification stream" half is structural (raw WebSocket, no
+client-supplied subscribe destination — the server binds identity at handshake) and is additionally
+covered by `NotificationSocketSecurityTest` (7/7: cross-user isolation exercised directly, including
+hostile frames naming another user's id).
+
+Backend suite: **289/289 green**, re-run three times after all fixes (twice back-to-back, plus one
+run isolated from any other Maven/Docker activity on the machine) for stability, since one of the fixed
+tests is a genuine concurrency race. `npm run build` is clean for the frontend (resume editor/preview/PDF
+download, placement resume-picker integration, notification bell + centre, announcement board + admin
+management, all wired into `AppRouter.tsx`/`DashboardLayout.tsx`).
+
+---
+
+**Phase 6 re-verification (2026-08-31).** Phase 6's checkpoint was first reported **deferred**, correctly:
+no `AI_API_KEY` was configured when it ran, and the verifier refused to mark a blocked item as passed. A
+real key has since been supplied in the git-ignored `.env`, and the checkpoint was re-run live and
+**passes**.
+
+Grounding was proven rather than assumed. The exact payload sent over the wire to Groq was captured and
+contained that student's real database values verbatim — `Data Structures (credits 4): 32.00/100.00 =
+32.00% (grade U)`, `5/10 classes attended = 50.00%`, and the real upcoming exam on `2026-09-15` — and the
+model's reply echoed those same figures rather than returning generic advice. A follow-up turn computed
+CGPA and days-to-exam from the same real data. Conversation history persists in `seqNo` order; a second
+student attempting to read, continue, rename or delete the first student's conversation gets `404` (not
+`403`, so an id cannot be probed for existence). The API key appears nowhere in `frontend/dist` nor in any
+response body. Rate limiting engages server-side: past the cap the application's own limiter rejects with
+`429` **before** the request reaches the provider, and a provider-side limit is translated honestly to
+`503` rather than storing a fabricated answer.
+
+Two findings worth carrying forward:
+
+- **The account has no `llama-3.x` model, and most of what it does have cannot chat.** `GET /models`
+  returns 14 ids including Whisper (speech-to-text, 448 ctx), Orpheus (text-to-speech) and prompt-guard
+  classifiers (512 ctx). Resolution logic that picks "the first available id" would select one of those
+  and break every AI feature. `AI_MODEL` is pinned to `openai/gpt-oss-120b` after testing candidates live.
+- **`gpt-oss` is a reasoning model and its reasoning tokens are billed against `max_tokens`.** At
+  `max_tokens=20` the API returns HTTP 200 with `content: ''` and `finish_reason: length` — a success
+  status carrying no answer. Phase 6 must keep a generous budget, read `message.content`, never surface
+  `message.reasoning` to a student, and treat empty content as an honest failure rather than storing it.
 
 ---
 

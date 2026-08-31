@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  BarChart3Icon,
   BuildingIcon,
   GraduationCapIcon,
   LibraryBigIcon,
@@ -7,14 +9,22 @@ import {
   UsersRoundIcon,
 } from "lucide-react";
 
+import { EmptyChartState } from "@/components/analytics/EmptyChartState";
+import { StatTile } from "@/components/analytics/StatTile";
+import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import * as analyticsService from "@/services/analyticsService";
+import type { AnalyticsAdminResponse } from "@/types/analytics";
+import { extractErrorMessage } from "@/utils/apiError";
 
 /**
- * Deliberately minimal (scope §69 — no fake functionality). It shows the real
- * authenticated user from GET /api/auth/me plus real navigation into the Phase 3
- * academic-management screens (departments, courses, subjects, students, faculty) —
- * links, not data, so nothing here is a placeholder for numbers that don't exist yet.
+ * Real data only (§69 — no fake functionality): the authenticated user from
+ * `GET /api/auth/me`, navigation into the Phase 3 academic-management screens, and an
+ * institution-wide analytics summary from `GET /api/analytics/overview` with no
+ * filters. Every figure below traces to that one response — nothing is invented.
  */
 const MANAGEMENT_LINKS = [
   {
@@ -52,12 +62,83 @@ const MANAGEMENT_LINKS = [
 export default function AdminDashboardPage() {
   const { user } = useAuth();
 
+  const [analytics, setAnalytics] = useState<AnalyticsAdminResponse | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+
+  useEffect(() => {
+    analyticsService
+      .getOverview({})
+      .then(setAnalytics)
+      .catch((err) => setAnalyticsError(extractErrorMessage(err, "Failed to load institution analytics.")))
+      .finally(() => setAnalyticsLoading(false));
+  }, []);
+
+  const classificationHasData = analytics ? analytics.classificationDistribution.some((s) => s.studentCount > 0) : false;
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Welcome, {user?.fullName}</h1>
         <p className="text-muted-foreground">Admin dashboard</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3Icon className="size-4 text-muted-foreground" />
+                Institution analytics
+              </CardTitle>
+              <CardDescription>Attendance, marks and performance across the institution.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" render={<Link to="/admin/analytics" />}>
+              Full dashboard
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {analyticsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {analyticsError && (
+            <Alert variant="destructive">
+              <AlertDescription>{analyticsError}</AlertDescription>
+            </Alert>
+          )}
+          {!analyticsLoading && !analyticsError && analytics && (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <StatTile label="Total students" value={analytics.totalStudents} emptyText="0" />
+                <StatTile label="Active students" value={analytics.activeStudents} emptyText="0" />
+                <StatTile label="Pending students" value={analytics.pendingStudents} emptyText="0" tone="warning" />
+                <StatTile label="Total faculty" value={analytics.totalFaculty} emptyText="0" />
+                <StatTile label="Departments" value={analytics.totalDepartments} emptyText="0" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <StatTile label="Attendance" value={analytics.attendancePercentage} suffix="%" emptyText="No classes held yet" />
+                <StatTile label="Marks" value={analytics.marksPercentage} suffix="%" emptyText="No marks entered yet" />
+                <StatTile label="Average GPA" value={analytics.averageGpa} emptyText="Not enough data" />
+                <StatTile
+                  label="At risk"
+                  value={analytics.atRiskStudents.length}
+                  tone={analytics.atRiskStudents.length > 0 ? "danger" : "default"}
+                  emptyText="0"
+                />
+              </div>
+              {classificationHasData ? (
+                <DistributionDoughnutChart
+                  labels={analytics.classificationDistribution.map((s) => s.category)}
+                  data={analytics.classificationDistribution.map((s) => s.studentCount)}
+                  colors={analytics.classificationDistribution.map((s) => s.colorHex)}
+                  className="max-w-xs"
+                />
+              ) : (
+                <EmptyChartState message="No students have enough data to be classified yet." />
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
