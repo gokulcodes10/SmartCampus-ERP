@@ -50,6 +50,30 @@ Accounts, all documented in the README: `admin@smartcampus.local` / `Admin@Dev12
 
 ---
 
+## 2a. What is already loaded right now
+
+The development database on this machine has **already been populated** per section 3. If you are demonstrating from it as it stands, you can skip to section 5. Section 3 remains the instructions for a database that has just been seeded from scratch.
+
+| Module | Now holds | Notes |
+|---|---|---|
+| Interview question bank | 23 questions | 18 hand-written across all six categories, 5 genuinely AI-generated. `student1` has 3 completed and 3 bookmarked, so progress is partial. |
+| Resumes | A complete one for `student1`, plus a second version | Every section filled. Both templates rendered and visually checked. |
+| Placement applications | 7, across 6 students and 4 drives | One carries an attached resume. Statuses span applied, under review, shortlisted, selected and rejected, so the analytics show real movement. |
+| Coding submissions | 6, including one deliberately wrong solution | All record the honest execution failure, since Judge0 is unreachable. |
+| Contest registrations | 3 students on the upcoming contest | Registering for the ended contest is refused with a clear reason, which is worth showing. |
+| Interviews | 3 for `student1`, 1 for `student2` | Non-overlapping. The overlap guard was re-verified and the probe removed. |
+| AI | One conversation of two turns, renamed; one study plan | The plan has 28 dated items across both subjects, 6 marked done, and is flagged as edited. |
+
+Ready-made ineligibility examples, so you do not have to manufacture one:
+
+- `student2` versus the TechNova Software Engineer drive: refused on CGPA, 7.00 against a 7.50 requirement. A near miss reads better than a hopeless one.
+- `student3` versus the same drive: refused on both CGPA and aggregate percentage, showing two reasons at once.
+- `student1` versus the Embedded Systems or Mechanical drives: refused on department.
+
+The AI daily budget is barely touched, with about 94 of 100 calls left at the time of writing. It resets daily.
+
+---
+
 ## 3. Populating the empty modules
 
 Do all of this through the running application at `http://localhost:5175`. Populating through the UI has a second benefit: it proves every screen you are about to demo actually works, so you find a broken form the night before rather than in front of an evaluator.
