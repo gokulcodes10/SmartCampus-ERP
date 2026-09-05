@@ -51,11 +51,16 @@ function statusBadgeVariant(status: StudentStatus) {
 /** Fetches the course list for one department, re-fetching whenever it changes. */
 function useCoursesForDepartment(departmentId: number | null) {
   const [courses, setCourses] = useState<CourseResponse[]>([]);
+  // Reset to [] during render as soon as `departmentId` changes (covers the null
+  // case too), rather than as a synchronous setState at the top of the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedFor, setFetchedFor] = useState<number | null | undefined>(undefined);
+  if (departmentId !== fetchedFor) {
+    setFetchedFor(departmentId);
+    setCourses([]);
+  }
   useEffect(() => {
-    if (departmentId === null) {
-      setCourses([]);
-      return;
-    }
+    if (departmentId === null) return;
     let cancelled = false;
     courseService.listAllCourses(departmentId).then((result) => {
       if (!cancelled) setCourses(result);
@@ -397,13 +402,13 @@ export default function StudentsPage() {
                           </Button>
                         ) : (
                           <>
-                            <Button variant="ghost" size="icon-sm" onClick={() => openEdit(student)}>
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(student)}>
                               <PencilIcon />
                               <span className="sr-only">Edit</span>
                             </Button>
                             <Button
                               variant="ghost"
-                              size="icon-sm"
+                              size="icon"
                               onClick={() => {
                                 setStatusError(null);
                                 setStatusTarget(student);

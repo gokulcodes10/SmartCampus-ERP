@@ -25,10 +25,11 @@ import smartcampus.entity.User;
 import smartcampus.service.AnnouncementService;
 
 /**
- * {@code /api/announcements} — §42 admin announcements. Method security is not enabled
- * on this build; ADMIN-only enforcement lives in {@link AnnouncementService} via {@code
- * ScopedWriteAuthorizer.requireAdmin}. Route rules for the write verbs and {@code
- * /manage} are the integrator's responsibility in {@code SecurityConfig}.
+ * {@code /api/announcements} — §42 announcements (admin, and faculty for their own
+ * department). Method security is not enabled on this build; the per-row rules
+ * (faculty: DEPARTMENT audience scoped to their own department, modify only their own
+ * announcements) live in {@link AnnouncementService}. Route rules for the write verbs
+ * and {@code /manage} are the integrator's responsibility in {@code SecurityConfig}.
  *
  * <p>{@code /manage} MUST be declared before {@code /{id}} or "manage" is parsed as an
  * id — the same shape as the Phase 7 hidden-test-cases rule and the Phase 8
@@ -52,7 +53,7 @@ public class AnnouncementController {
         return announcementService.board(caller, pageable);
     }
 
-    /** ADMIN only. MUST be declared before {@code GET /{id}}. */
+    /** ADMIN: all announcements; FACULTY: their own. MUST be declared before {@code GET /{id}}. */
     @GetMapping("/manage")
     public PageResponse<AnnouncementResponse> manage(
             @RequestParam(required = false) AnnouncementAudience audience,
@@ -69,7 +70,7 @@ public class AnnouncementController {
         return announcementService.getById(id, caller);
     }
 
-    /** ADMIN only. */
+    /** ADMIN: any audience; FACULTY: DEPARTMENT audience for their own department only. */
     @PostMapping
     public ResponseEntity<AnnouncementResponse> create(
             @Valid @RequestBody AnnouncementCreateRequest request, @AuthenticationPrincipal User caller) {
@@ -77,7 +78,7 @@ public class AnnouncementController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    /** ADMIN only. Carries no audience/departmentId — re-targeting is out of scope (delete + recreate instead). */
+    /** ADMIN, or the FACULTY creator. Carries no audience/departmentId — re-targeting is out of scope (delete + recreate instead). */
     @PutMapping("/{id}")
     public AnnouncementResponse update(
             @PathVariable Long id,
@@ -86,7 +87,7 @@ public class AnnouncementController {
         return announcementService.update(id, request, caller);
     }
 
-    /** ADMIN only. */
+    /** ADMIN, or the FACULTY creator. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User caller) {
         announcementService.delete(id, caller);

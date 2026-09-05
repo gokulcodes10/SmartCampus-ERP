@@ -496,13 +496,13 @@ export default function JobsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(job)}>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(job)}>
                           <PencilIcon />
                           <span className="sr-only">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => {
                             setDeleteError(null);
                             setDeleteTarget(job);

@@ -234,7 +234,7 @@ The §69 "no fake functionality" rule governs every phase — no hard-coded dash
 | 9 | Resume | ✅ Done — checkpoint verified (see note below) | |
 | 10 | Interview | ✅ Done — checkpoint verified (see Phase 11 note below) | |
 | 11 | Real-Time | ✅ Done — checkpoint verified (see note below) | |
-| 12 | Finalization | ⬜ Not started | |
+| 12 | Finalization | ✅ Done — all 3 audit findings fixed and re-verified; 1 item (responsive pass) still not exercised (see the remediation note below) | |
 
 **Phase 1 note (verified 2026-08-19).** Checkpoint items 1 and 2 were observed passing, not inferred:
 `GET /actuator/health` returned HTTP 200 `{"status":"UP"}` from a booted jar against the real MySQL 8.4
@@ -556,6 +556,216 @@ Two findings worth carrying forward:
   `max_tokens=20` the API returns HTTP 200 with `content: ''` and `finish_reason: length` — a success
   status carrying no answer. Phase 6 must keep a generous budget, read `message.content`, never surface
   `message.reasoning` to a student, and treat empty content as an honest failure rather than storing it.
+
+**Phase 12 note — the final §75 audit (2026-08-31).** Phase 12's build/integration wave (Swagger/OpenAPI,
+a §61 security-verification suite, seed data + production admin bootstrap, frontend tests, a responsive
+pass, README/deployment) was independently re-verified end to end against a freshly booted instance —
+real MySQL, real Mailpit, a real Groq call, `SPRING_PROFILES_ACTIVE=seed SMARTCAMPUS_SEED_ENABLED=true`.
+**This is not a clean pass**: one real §75 item fails, two previously-unknown defects were found live, and
+one item could not be exercised this session. Reported honestly per the audit's own rules rather than
+smoothed over.
+
+*Suites, re-run independently in this audit, not merely trusted from the integration report:*
+`./mvnw -o test` → **372/372, 0 failures, 0 errors, 0 skipped, BUILD SUCCESS** (one full clean run, ~2m17s).
+Frontend: `npm run build` clean; `npm test -- --run` → **75/75 across 15 files**; `npx oxlint` →
+**0 errors, 4 warnings** (all four are the pre-approved `react(only-export-components)` warning on
+`AuthContext.tsx`, `NotificationContext.tsx`, `button.tsx`, `badge.tsx` — zero `set-state-in-effect`,
+confirming the three Addendum-4 warnings were genuinely fixed, not just relabeled).
+
+*§75 Authentication — all verified live.* Registration (`201`), login, BCrypt (`$2a$10$...` confirmed by
+reading `users.password` directly), JWT issue + validation (`GET /api/auth/me` 200; a tampered token and
+a garbage-signature token both 401), protected APIs reject unauthenticated callers (401), role checks
+reject a STUDENT token on an ADMIN-only route (403), and the OTP reset round trip was driven end to end
+through the real Mailpit API (request → real 6-digit code read from the message body → wrong-code 400 →
+verify 200 → reset 200 → login with the new password 200 → reset back to the documented seed password so
+the credential table stays accurate).
+
+*§75 Student — all verified live except the one explicitly-deferred item.* Login, `GET /api/students/me`,
+`GET /api/attendance/me/summary`, `GET /api/marks/me/summary`, `GET /api/analytics/me` all real,
+non-fabricated, self-consistent data for the seeded `student1`. AI assistant: a real Groq call
+(`POST /api/ai/conversations`) returned an answer grounded in the student's actual 95.00% attendance
+figure. Coding: problem listing/detail, and a real submission (`POST /api/coding/submissions`, `201`) —
+correctly recorded with `status: INTERNAL_ERROR` and an honest `"Judge0 at http://localhost:2358 could
+not be reached (Connection refused)"` message, not a fabricated verdict. Contests: registration (`201`)
+and both the per-contest and global leaderboards return real (zero, honestly) scores. Placement: job
+listing, a real resume built via `POST /api/resumes` (real fields, a genuine multi-KB
+`Content-Type: application/pdf` download from `GET /api/resumes/{id}/pdf`), and a real application
+(`POST /api/applications`, `201`, resume attached). Interview: AI-generated practice questions via
+`POST /api/interview-questions/generate` (a real, on-topic, non-fabricated AVL-tree rotation explanation
+from the same Groq model), self-scheduling (`POST /api/interviews`, `201`) and `GET /api/interviews/upcoming`
+returning the newly scheduled row. Notifications: `GET /api/notifications` returns real seeded
+announcement fan-out rows with a genuine unread count.
+**"Student can code" and "Student can participate in contests" are `not_exercised` for the
+execution-dependent half only** — no Judge0 endpoint is reachable on this machine (G10), exactly the
+accepted deferral from Phase 7/D1. Every part of both capabilities that does not require live execution
+(playground/problem browsing, submission recording with an honest failure, contest registration, both
+leaderboards) is independently confirmed working.
+
+*§75 Faculty — one item genuinely fails.* Login, `GET /api/faculty/me`, `GET /api/teaching/my-classes`
+(real assigned-subject roster), attendance recording (`POST /api/attendance/bulk`, `200`, 3 real rows),
+marks entry (a real exam created via `POST /api/exams` then `POST /api/marks/bulk`, real grade/GPA
+computation returned), and cohort analytics (`GET /api/analytics/class`, real numbers) are all verified.
+`AcademicAccessGuard` scoping re-confirmed live: the same faculty token creating an exam for a subject
+they are **not** assigned to gets a clean `403`.
+**"Faculty can send authorized announcements" FAILS.** `POST /api/announcements` with a faculty bearer
+token returns `403 FORBIDDEN` for every audience tried (`DEPARTMENT` scoped to the faculty's own
+department, and `ALL`). Root cause confirmed by reading the code, not just the HTTP response: the route
+is `hasRole("ADMIN")` in `SecurityConfig` (`ANNOUNCEMENTS` POST matcher), and independently
+`AnnouncementService.create()` opens with an unconditional `scopedWriteAuthorizer.requireAdmin(caller)` —
+so even bypassing the route rule would still be rejected at the service layer. There is also no
+faculty-facing announcement-composition page anywhere in the frontend (`frontend/src/pages/faculty/`
+has no such route; only `frontend/src/pages/admin/AdminAnnouncementsPage.tsx` exists) — a faculty user has
+no path to this capability through the UI either. This directly contradicts §8 ("FACULTY Can access: ...
+Announcements/notifications"), §42 ("Admin/faculty-authorized users can create announcements") and §75
+itself ("Faculty can send authorized announcements"). This was never a Phase 11 decision recorded
+anywhere in this document — it appears to be an unintentional gap, not a deliberate scope cut.
+
+*§75 Admin — all verified live.* User provisioning (`POST /api/users`, `201`), department/course/company
+creation, subject listing, a real placement drive (`POST /api/jobs`), a real contest (`POST /api/contests`),
+a real global announcement (`POST /api/announcements`, `201`, real `recipientCount`), and
+`GET /api/analytics/overview` (real institution-wide counts: 26 students, 5 faculty, 6 departments, etc.
+at time of testing). Integration: student self-view of another student's profile returns `404` (not `403`,
+ID-enumeration-safe) and another student's marks summary returns `403`, both re-confirmed live.
+
+*§61 security checklist — tested, not asserted, item by item.* **BCrypt**: confirmed by reading the raw
+hash. **JWT**: issued, validated, tamper/garbage-signature both 401. **Role-based + backend authorization**:
+STUDENT→ADMIN route 403, faculty cross-subject write 403, cross-student read 404/403 as above.
+**Input validation**: registration/attendance/marks bean-validation failures return clean 400 envelopes
+(covered by `InputValidationTest`, 6/6) — **but see the new defect below**, which is a real gap in this
+same category the existing suite didn't cover. **SQL injection protection**: `' OR '1'='1` and a
+`DROP TABLE` payload sent through `GET /api/students?q=...` both returned safe, unexploited results
+(200, no data leak, `students` row count unchanged at 26 afterward) — parameterized queries hold.
+**CORS**: `Origin: http://evil.example.com` gets no `Access-Control-Allow-Origin` header;
+`http://localhost:5174` gets a correct one. **Secure headers**: `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy`,
+and two genuinely different `Content-Security-Policy` values confirmed live — `default-src 'none'` on a
+strict API response, a looser self/inline policy on the Swagger UI HTML response. **API key protection**:
+`GET /api/ai/status`/`GET /api/ai/models` never return the raw key; the built `frontend/dist` bundle was
+grepped for `gsk_` and other key-shaped strings — none found. **Environment variables**: `.env` is
+git-ignored and was never committed (confirmed against the full `git log --all -p`, whose only `gsk_` hit
+is the literal assertion string inside a test file); `.env.example` is placeholder-only. **File upload
+validation**: `not_exercised` — the application has **zero** file-upload functionality of any kind (no
+`MultipartFile` reference anywhere in `src/main`, confirmed both by `FileUploadValidationTest`'s classpath
+scan and by grepping the live OpenAPI JSON for a multipart request body — none exists), so there is
+nothing to validate; this is a scope gap noted honestly rather than marked done. **Rate limiting**:
+21 rapid `POST /api/auth/login` attempts from one caller returned `401 ×20` then `429` on the 21st, in the
+§47 envelope. **OTP expiration**: covered by the live reset round trip above plus `OtpExpirationTest`
+(3/3). **Login error handling**: wrong password and unknown email both 401 (byte-shape identical per the
+Phase 2 note, re-confirmed by the passing `LoginErrorHandlingTest`). **No password in API responses**:
+grepped `GET /api/auth/me`'s response body for "password" — absent. **No secrets committed to git**:
+`.env` untracked, no real key/secret pattern found anywhere in tracked files or full git history, and the
+built frontend bundle contains no leaked key.
+
+*Two confirmed defects found in this audit, neither previously known:*
+
+1. **Seed-data boot banner never prints the real credentials.** `DevDataSeeder.seed()`'s startup log uses
+   an SLF4J-style text block with `{}` placeholders but renders it through Java's `String.formatted()`
+   (which expects `%s`), then calls `log.warn(alreadyFormattedString)` with no further arguments — so the
+   `{}` tokens are never substituted and the printed banner literally reads `ADMIN {} / {}` instead of
+   the real email and password. **Cosmetic only**: the actual seeded accounts are correct (`admin@
+   smartcampus.local` / `Admin@Dev12345` logs in successfully; verified live) and this README's credential
+   table is accurate — only the log line an operator would read at boot is wrong. Fix is a one-line change
+   from `.formatted(...)` to `String.format(...)` with `%s` placeholders, or vice versa on the text block;
+   left unfixed by this audit (auditing, not patching) but flagged for the next session.
+2. **A missing or malformed required query parameter returns `500` instead of `400`.**
+   `GlobalExceptionHandler` handles `MethodArgumentNotValidException` (body validation) and, since the
+   integration wave's sort-defect fix, `PropertyReferenceException`/`InvalidDataAccessApiUsageException`
+   (bad `Pageable` binding) — but has no handler for `MissingServletRequestParameterException` or
+   `MethodArgumentTypeMismatchException`, so either falls through to the generic `Exception.class`
+   catch-all and returns an opaque `500 INTERNAL_ERROR`. Confirmed live and reproducible on three
+   endpoints, all required-`@RequestParam`-without-a-default: `GET /api/attendance/roster` (omit `date` →
+   500; `?subjectId=abc` → 500), `GET /api/attendance/class-summary`, and `GET /api/marks/entry-sheet`
+   (omit `examId` → 500). This is the identical bug *class* the integration report already fixed for one
+   exception shape (bad `sort=`); this is a different exception type the earlier fix does not cover, and
+   `InputValidationTest`'s 6 cases only exercise `@RequestBody` validation, not `@RequestParam` binding, so
+   nothing caught it. In normal UI use the frontend always supplies these parameters with a default, so
+   this does not block the attendance/marks-entry checkpoints above (verified working with correct
+   parameters) — but any missing/malformed value (a stale form, a partially-typed URL, direct API use)
+   produces an uncaught 500 rather than the clean §47 400 envelope §61 requires for input validation.
+   Left unfixed by this audit for the same reason as above.
+
+*One item not exercised.* The responsive pass (desktop/laptop/tablet/mobile) could not be independently
+re-verified in this session: the Chrome browser extension used for browser automation was not connected,
+and no headless browser (Playwright/Puppeteer) is installed on this machine. Code inspection is
+consistent with the claimed work — `DashboardLayout.tsx` hides the sidebar below the `lg` breakpoint and
+shows a `lg:hidden` hamburger driving a new `MobileNavDrawer` component, responsive Tailwind utilities
+(`sm:`/`lg:`) appear across 44 files, the built `index.html` has a correct viewport meta tag, and the
+compiled CSS contains real media-query rules — but code existing is not the same as an observed render at
+each breakpoint, so this is reported as `not_exercised`, not verified, per this audit's own honesty rule.
+
+*Cleanup.* All data this audit session created (an extra department/course/company/job/contest/
+announcement, a resume, a placement application, an interview, an exam and its marks, two attendance
+rows, a coding submission, an AI conversation, two generated interview questions, a contest registration,
+two provisioned user accounts, and used OTP tokens) was deleted from the dev database after verification,
+in FK-safe order. Data already present before this session (e.g. `resumes.id=1`, `interviews.id=1`, the
+`integrator-verify-*` account) was left untouched — it predates this audit and is not this session's to
+remove. The application was booted only for this audit and killed cleanly afterward; port 8080 is free.
+
+**Verdict: §75 is NOT fully satisfied.** Of the ~40 checklist lines, all but four were personally observed
+working over real HTTP in this session. Two Student items are `not_exercised` for their execution-only
+half (Judge0 unreachable, an accepted G10/D1 deferral — everything else about those two capabilities
+works). One Faculty item — announcements — genuinely fails end to end with no workaround. The responsive
+pass is `not_exercised` for lack of a browser tool this session, not because it was found broken. Every
+other line, across Authentication, Student, Faculty, Admin and Integration, was verified by performing it.
+
+**Phase 12 remediation (2026-09-05).** The three findings the §75 audit reported were fixed and
+re-verified, and the suite is **379/379 green** (`./mvnw -o test`, one clean run, BUILD SUCCESS).
+
+1. **Faculty announcements now work (the one real §75 failure).** The route rules in `SecurityConfig`
+   admit FACULTY alongside ADMIN for `POST`/`PUT`/`DELETE /api/announcements` and for
+   `GET /api/announcements/manage`, and `AnnouncementService` replaced its unconditional
+   `requireAdmin(caller)` with the narrower rule §42 actually describes: a faculty member may create a
+   **DEPARTMENT** announcement for their **own** department only, and may update or delete only the
+   announcements they themselves created. The management list follows the same split — ADMIN sees
+   everything, FACULTY sees only their own.
+
+2. **A real defect in that new code path was found by the test suite and fixed — this is the part worth
+   carrying forward.** The first cut of the faculty path returned `500`, not `201`. Root cause:
+   `AnnouncementService.create()` built its response DTO **after** calling `fanOut()`, and
+   `NotificationService.dispatchAll()` issues `entityManager.clear()` to bound memory on a large
+   fan-out, which detaches the caller's whole persistence context. `toResponse()` then read
+   `department.getName()` on a now-detached lazy proxy and threw `LazyInitializationException`.
+
+   This is **exactly the trap documented on `dispatchAll`'s own javadoc** after Wave D, where it was
+   fixed in `JobService#updateStatus` and `CodingContestService#update` — reintroduced in a new caller
+   written later. Note why it hid: the ADMIN path never showed it, because an admin's department comes
+   from `departmentRepository.findById(...)` and is already fully materialized, whereas a faculty
+   member's arrives as an uninitialized proxy off `Faculty#getDepartment`, and `resolveRecipients` only
+   reads its **id**, which a Hibernate proxy answers without touching the database — so nothing forced
+   the proxy to load before the clear. Fixed by building the response before the fan-out (the same
+   pattern as the two earlier call sites) and attaching the recipient count afterwards via a new
+   `AnnouncementResponse#withRecipientCount`. **A fourth caller added in a future phase will hit this
+   again**; the javadoc warning alone did not prevent the third occurrence.
+
+   Verified live against a booted instance, not just by the suite: faculty1 posting to their own
+   department returns `201` with `departmentName` populated (the exact field that used to throw) and a
+   real `recipientCount: 7` backed by 7 genuine `notifications` rows; the same token targeting `ALL` or
+   another department gets `403`; a STUDENT gets `403`; a second faculty deleting another's announcement
+   gets `403` while the creator gets `204`, cascading the notification rows away with it. All probe data
+   created during this verification was deleted afterwards.
+
+3. **The other two defects were already fixed in this working tree and are confirmed:** the
+   `DevDataSeeder` boot banner now renders real credentials instead of literal `{}`, and
+   `GlobalExceptionHandler` gained `MissingServletRequestParameterException` and
+   `MethodArgumentTypeMismatchException` handlers so a missing or malformed required query parameter
+   returns the §47 `400` envelope instead of an opaque `500`.
+
+**Also fixed, unrelated but found while working here.** `NotificationService.java` contained a raw NUL
+byte inside a string literal (a `(userId, dedupeKey)` separator written as a literal control character
+rather than an escape). Git and grep classified the whole file as **binary**, so it was silently invisible
+to every text search across the repository — which is how the trap in finding 2 stayed unfound in that
+file for so long. Replaced with the `\0` escape: identical character, identical behaviour, file is plain
+text again.
+
+**Still open.** The visual responsive pass remains `not_exercised` — no browser automation was available
+in any session that tried. Judge0 execution remains blocked per G10, with decision D1 unresolved.
+
+**Frontend gap deliberately left, not silently dropped.** The faculty announcement capability is complete
+and reachable over the API, but there is still **no faculty-facing composition page** in the React app —
+`/announcements` is the read-only board for every role, and the compose/manage screen
+(`AdminAnnouncementsPage`) is behind an ADMIN route. A faculty member can therefore use this capability
+through the API or Swagger, but not yet through the UI. This is recorded here rather than left for
+someone to discover.
 
 ---
 

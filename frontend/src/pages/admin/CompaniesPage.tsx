@@ -296,13 +296,13 @@ export default function CompaniesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(company)}>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(company)}>
                           <PencilIcon />
                           <span className="sr-only">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => {
                             setDeleteError(null);
                             setDeleteTarget(company);

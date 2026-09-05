@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -43,15 +43,19 @@ export function InterviewStatusDialog({ open, onOpenChange, interview, onUpdated
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open || !interview) return;
-    setStatus("");
-    setOutcome(interview.outcome ?? "");
-    setFeedback(interview.feedback ?? "");
-    setCancellationReason(interview.cancellationReason ?? "");
-    setError(null);
-  }, [open, interview]);
+  // Reset the form whenever the dialog opens (not in an effect — adjusted
+  // during render, following https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open && interview) {
+      setStatus("");
+      setOutcome(interview.outcome ?? "");
+      setFeedback(interview.feedback ?? "");
+      setCancellationReason(interview.cancellationReason ?? "");
+      setError(null);
+    }
+  }
 
   const allowedNext = interview ? STATUS_TRANSITIONS[interview.status] : [];
 

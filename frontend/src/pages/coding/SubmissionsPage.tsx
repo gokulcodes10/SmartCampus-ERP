@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 import { PaginationBar } from "@/components/admin/PaginationBar";
@@ -83,19 +83,21 @@ export default function SubmissionsPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (expandedId == null || detailById[expandedId]) return;
-    setLoadingDetailId(expandedId);
+  // Fetching a not-yet-cached row's detail is triggered directly from the click that
+  // expands it (below), rather than from an effect watching `expandedId` — the click
+  // is the actual event that causes it. See
+  // https://react.dev/learn/you-might-not-need-an-effect#sharing-logic-between-event-handlers.
+  function toggleRow(id: number) {
+    const next = expandedId === id ? null : id;
+    setExpandedId(next);
+    if (next == null || detailById[next]) return;
+    setLoadingDetailId(next);
     setDetailError(null);
     codingService
-      .getSubmission(expandedId)
-      .then((detail) => setDetailById((prev) => ({ ...prev, [expandedId]: detail })))
+      .getSubmission(next)
+      .then((detail) => setDetailById((prev) => ({ ...prev, [next]: detail })))
       .catch((err) => setDetailError(extractErrorMessage(err, "Failed to load this submission.")))
       .finally(() => setLoadingDetailId(null));
-  }, [expandedId, detailById]);
-
-  function toggleRow(id: number) {
-    setExpandedId((current) => (current === id ? null : id));
   }
 
   if (isFaculty) {
@@ -195,7 +197,7 @@ export default function SubmissionsPage() {
                   <Fragment key={item.id}>
                     <TableRow className="cursor-pointer" onClick={() => toggleRow(item.id)}>
                       <TableCell>
-                        <Button variant="ghost" size="icon-sm" type="button">
+                        <Button variant="ghost" size="icon" type="button">
                           {expandedId === item.id ? <ChevronDownIcon /> : <ChevronRightIcon />}
                         </Button>
                       </TableCell>

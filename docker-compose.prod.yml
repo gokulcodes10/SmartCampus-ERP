@@ -1,0 +1,151 @@
+# SmartCampus ERP — production compose file (scope 71).
+#
+# This is NOT docker-compose.yml (the dev supporting-services file — MySQL + Mailpit
+# + profile-gated Judge0, which stays untouched). This file wires the full stack —
+# frontend, backend and MySQL — as containers, for a single-host production
+# deployment. Every credential and every tunable comes from the environment; nothing
+# is a committed literal, and there is no dev fallback default on anything secret.
+#
+# Usage:
+#   cp .env.example .env        # then fill in REAL production values — see
+#                                # docs/deployment.md for the full checklist
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# What this deliberately does NOT include:
+#   - Judge0. It is an external dependency per scope §71 ("Spring Boot → Judge0"),
+#     reached over JUDGE0_URL exactly like any other external API — it is not
+#     assumed to be self-hosted alongside this stack. Point JUDGE0_URL at a real
+#     reachable instance (hosted or a separate amd64/cgroup-v1 host); see
+#     docs/deployment.md.
+#   - Mailpit. Production reads SMTP_HOST/PORT/USERNAME/PASSWORD for a real
+#     provider; there is no dev mail sink in this file.
+#   - HTTPS termination. Scope §71 puts this in front of the deployed stack (a
+#     load balancer, reverse proxy, or platform-level TLS), not inside it — see
+#     the HTTPS section of docs/deployment.md. This file exposes the frontend on
+#     plain HTTP:80 for a terminator to sit in front of.
+
+name: smartcampus-prod
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # MySQL — application database. Credentials, unlike docker-compose.yml, have NO
+  # default here: an unset DB_USERNAME/DB_PASSWORD/DB_DATABASE fails the compose
+  # `up` outright rather than silently falling back to the well-known dev values.
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.4
+    container_name: smartcampus-mysql-prod
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      # Database name is fixed at "smartcampus" — it is the schema every Flyway
+      # migration and the backend's own default DB_URL already target; only the
+      # user, password and root password are environment-driven secrets here.
+      MYSQL_DATABASE: smartcampus
+      MYSQL_USER: ${DB_USERNAME:?set DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env — a compose/infra-level credential, not a Spring property; document it next to DB_PASSWORD}
+    volumes:
+      - mysql-prod-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - smartcampus-prod
+
+  # ---------------------------------------------------------------------------
+  # Backend — Spring Boot API, built from backend/Dockerfile. SPRING_PROFILES_ACTIVE
+  # is pinned to "prod" here on purpose — this compose file is the production
+  # deployment path, so it must never be booted with the dev profile, and it must
+  # never include "seed" (see the warning on SMARTCAMPUS_SEED_ENABLED below and in
+  # .env.example).
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartcampus-backend-prod
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+      DB_URL: jdbc:mysql://mysql:3306/smartcampus
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env, generated with: openssl rand -base64 48}"
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS to the deployed frontend origin — the dev default (localhost) must not ship}
+
+      AI_PROVIDER: ${AI_PROVIDER:-groq}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.groq.com/openai/v1}
+      AI_MODEL: ${AI_MODEL:-}
+
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST to a real provider — Mailpit is dev-only}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      MAIL_FROM: ${MAIL_FROM:-noreply@smartcampus.local}
+
+      JUDGE0_URL: ${JUDGE0_URL:-}
+      JUDGE0_API_KEY: ${JUDGE0_API_KEY:-}
+      JUDGE0_HOST_HEADER: ${JUDGE0_HOST_HEADER:-}
+
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:-60}
+
+      # Seed data must NEVER run in production — deliberately not wired to a
+      # "seed" profile here; only the production-safe bootstrap path below.
+      SMARTCAMPUS_SEED_ENABLED: "false"
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+
+      FLYWAY_OUT_OF_ORDER: ${FLYWAY_OUT_OF_ORDER:-false}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    networks:
+      - smartcampus-prod
+
+  # ---------------------------------------------------------------------------
+  # Frontend — static bundle served by nginx, built from frontend/Dockerfile.
+  # nginx.conf proxies /api and /ws to the "backend" service by its compose
+  # network name, so VITE_API_BASE_URL is deliberately left as the image's own
+  # default ("", relative) — no build arg override needed for this topology.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smartcampus-frontend-prod
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - smartcampus-prod
+
+networks:
+  smartcampus-prod:
+    driver: bridge
+
+volumes:
+  mysql-prod-data:

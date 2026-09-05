@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -130,13 +130,17 @@ export function InterviewFormDialog({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setForm(mode === "edit" && interview ? fromInterview(interview) : emptyForm());
-    setFieldErrors({});
-    setFormError(null);
-  }, [open, mode, interview]);
+  // Reset the form whenever the dialog opens (not in an effect — adjusted
+  // during render, following https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setForm(mode === "edit" && interview ? fromInterview(interview) : emptyForm());
+      setFieldErrors({});
+      setFormError(null);
+    }
+  }
 
   function validate(): boolean {
     const errors: Record<string, string> = {};

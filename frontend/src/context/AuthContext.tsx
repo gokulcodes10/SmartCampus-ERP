@@ -23,7 +23,11 @@ export const AuthContext = createContext<AuthContextValue | undefined>(undefined
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Initialized from the stored token during render (not corrected inside an
+  // effect): with no token there is nothing to bootstrap, so isLoading starts
+  // false already; with a token, the bootstrap effect below flips it back to
+  // false once GET /api/auth/me settles.
+  const [isLoading, setIsLoading] = useState<boolean>(() => !!getStoredToken());
   const navigate = useNavigate();
 
   const clearAuth = useCallback(() => {
@@ -42,13 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Bootstrap: a stored token is re-validated against GET /api/auth/me on
   // load rather than trusted blindly, since it may have expired or been
-  // revoked (user disabled) since it was last used.
+  // revoked (user disabled) since it was last used. With no stored token
+  // there is nothing to do here — isLoading was already initialized to
+  // false above, so no state update happens synchronously from this effect.
   useEffect(() => {
-    let cancelled = false;
     if (!getStoredToken()) {
-      setIsLoading(false);
       return;
     }
+    let cancelled = false;
     authService
       .fetchCurrentUser()
       .then((me) => {

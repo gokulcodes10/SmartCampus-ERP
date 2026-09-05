@@ -27,4 +27,31 @@ public record AnnouncementResponse(
         String createdByName,
         Long recipientCount,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {}
+        LocalDateTime updatedAt) {
+
+    /**
+     * Returns a copy carrying {@code recipientCount}. This exists so a caller can build
+     * the rest of this DTO from its entity <b>before</b> a notification fan-out runs and
+     * only attach the resulting count afterwards — the fan-out detaches the entity, so
+     * reading {@code departmentName} after it throws. See {@code AnnouncementService#create}
+     * and {@code NotificationService#dispatchAll}'s caller warning.
+     */
+    public AnnouncementResponse withRecipientCount(Long count) {
+        return new AnnouncementResponse(
+                id,
+                title,
+                body,
+                audience,
+                departmentId,
+                departmentName,
+                priority,
+                publishedAt,
+                expiresAt,
+                active,
+                createdById,
+                createdByName,
+                count,
+                createdAt,
+                updatedAt);
+    }
+}

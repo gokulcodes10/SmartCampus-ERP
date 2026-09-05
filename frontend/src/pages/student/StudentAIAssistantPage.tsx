@@ -109,14 +109,23 @@ export default function StudentAIAssistantPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Reset detail state during render whenever `selectedId` changes, rather than as
+  // the first statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedForSelectedId, setFetchedForSelectedId] = useState<number | null | "unset">("unset");
+  if (selectedId !== fetchedForSelectedId) {
+    setFetchedForSelectedId(selectedId);
     if (selectedId === null) {
       setDetail(null);
-      return;
+    } else {
+      setDetailLoading(true);
+      setDetailError(null);
     }
+  }
+
+  useEffect(() => {
+    if (selectedId === null) return;
     let cancelled = false;
-    setDetailLoading(true);
-    setDetailError(null);
     aiService
       .getConversation(selectedId)
       .then((data) => {
@@ -348,7 +357,7 @@ export default function StudentAIAssistantPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Conversations</CardTitle>
-              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setSelectedId(null)}>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedId(null)}>
                 <PlusIcon />
                 <span className="sr-only">New conversation</span>
               </Button>

@@ -281,13 +281,13 @@ export default function AdminInterviewQuestionsPage() {
                     <TableCell className="text-muted-foreground">{q.companyName || "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(q)}>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(q)}>
                           <PencilIcon />
                           <span className="sr-only">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => {
                             setDeleteError(null);
                             setDeleteTarget(q);

@@ -99,9 +99,14 @@ export default function StudentInterviewPrepPage() {
   // exactly the row that changed, using the real PUT response — never an optimistic
   // local flip.
   const [rows, setRows] = useState<InterviewQuestionResponse[]>([]);
-  useEffect(() => {
+  // Re-sync the mirror during render whenever a new page of `data` arrives, rather
+  // than via an effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [rowsForData, setRowsForData] = useState(data);
+  if (data !== rowsForData) {
+    setRowsForData(data);
     setRows(data?.content ?? []);
-  }, [data]);
+  }
 
   function handleQuestionChanged(updated: InterviewQuestionResponse) {
     setRows((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));

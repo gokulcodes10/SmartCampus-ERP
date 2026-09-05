@@ -173,10 +173,19 @@ export default function StudentResumeEditorPage() {
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Reset loading/error during render when the target record changes, rather than as
+  // the first statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const loadKey = `${isEditMode}:${resumeId}`;
+  const [fetchedKey, setFetchedKey] = useState<string | null>(null);
+  if (loadKey !== fetchedKey) {
+    setFetchedKey(loadKey);
     setIsLoading(true);
     setLoadError(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
 
     if (isEditMode && resumeId !== null) {
       resumeService

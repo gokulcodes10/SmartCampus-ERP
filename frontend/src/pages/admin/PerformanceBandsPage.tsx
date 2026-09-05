@@ -59,8 +59,6 @@ export default function PerformanceBandsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   function loadBands() {
-    setIsLoading(true);
-    setLoadError(null);
     performanceBandService
       .list()
       .then(setBands)
@@ -68,6 +66,8 @@ export default function PerformanceBandsPage() {
       .finally(() => setIsLoading(false));
   }
 
+  // Mount-only fetch: isLoading/loadError already start at their reset values via
+  // useState above, so the effect only needs to perform the fetch itself.
   useEffect(() => {
     loadBands();
   }, []);
@@ -228,7 +228,7 @@ export default function PerformanceBandsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{band.description || "—"}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon-sm" onClick={() => openEdit(band)}>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(band)}>
                         <PencilIcon />
                         <span className="sr-only">Edit</span>
                       </Button>

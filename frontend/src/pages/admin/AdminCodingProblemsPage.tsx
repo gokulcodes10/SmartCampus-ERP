@@ -445,13 +445,13 @@ export default function AdminCodingProblemsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(problem)}>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(problem)}>
                           <PencilIcon />
                           <span className="sr-only">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => {
                             setDeleteError(null);
                             setDeleteTarget(problem);
@@ -755,11 +755,11 @@ export default function AdminCodingProblemsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => startEditTestCase(tc)}>
+                          <Button variant="ghost" size="icon" onClick={() => startEditTestCase(tc)}>
                             <PencilIcon />
                             <span className="sr-only">Edit</span>
                           </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => setDeleteTestCaseTarget(tc)}>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteTestCaseTarget(tc)}>
                             <Trash2Icon />
                             <span className="sr-only">Delete</span>
                           </Button>

@@ -81,7 +81,7 @@ export function RepeatableSection<T>({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon"
                     disabled={index === 0}
                     onClick={() => moveRow(index, -1)}
                     aria-label="Move up"
@@ -91,7 +91,7 @@ export function RepeatableSection<T>({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon"
                     disabled={index === items.length - 1}
                     onClick={() => moveRow(index, 1)}
                     aria-label="Move down"
@@ -101,7 +101,7 @@ export function RepeatableSection<T>({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon"
                     onClick={() => removeRow(index)}
                     aria-label="Remove"
                   >

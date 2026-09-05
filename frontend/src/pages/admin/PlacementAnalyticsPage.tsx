@@ -35,9 +35,9 @@ export default function PlacementAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Runs once on mount only ([] deps): isLoading/error already start at their
+    // reset values via useState above, so there is nothing to set synchronously here.
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
     placementAnalyticsService
       .getPlacementAnalytics()
       .then((result) => {

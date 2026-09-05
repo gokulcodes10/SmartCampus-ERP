@@ -62,10 +62,18 @@ export default function ProblemDetailPage() {
       .catch((err) => setHistoryError(extractErrorMessage(err, "Failed to load submission history.")));
   }, [canSeeHistory, id, contestId]);
 
-  useEffect(() => {
-    if (!id) return;
+  // Loading/error reset for the id-driven fetch below happens during render, not as
+  // the first statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedForId, setFetchedForId] = useState<number | null>(null);
+  if (id && id !== fetchedForId) {
+    setFetchedForId(id);
     setIsLoading(true);
     setLoadError(null);
+  }
+
+  useEffect(() => {
+    if (!id) return;
     Promise.all([problemService.getProblem(id), codingService.listLanguages()])
       .then(([problemData, languageList]) => {
         setProblem(problemData);

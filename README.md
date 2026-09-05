@@ -10,9 +10,22 @@ Every feature is backed by a real API, a real database table and real persistenc
 
 ## Build Status
 
-🚧 **In development.** Phases 1–11 are complete and verified against real infrastructure — the backend boots against real MySQL with all eleven Flyway migrations applied, and every phase checkpoint was proven by actually performing it: driving the API over HTTP, reading OTP mail out of Mailpit, and making a real Groq call grounded in a student's actual academic record. The backend test suite is **299/299 green**. Judge0 remains the one blocked component — the coding module is fully built against the real Judge0 API contract, but live execution cannot run on Docker Desktop (see [Judge0](#judge0) below), so that one checkpoint is deferred rather than faked. Phase 12 (finalization) remains.
+✅ **All twelve phases are built, and every §75 gap the final audit found has now been closed.** Phases 1–11 were each verified against real infrastructure — the backend boots against real MySQL with all eleven Flyway migrations applied, and every phase checkpoint was proven by actually performing it: driving the API over HTTP, reading OTP mail out of Mailpit, and making a real Groq call grounded in a student's actual academic record. The backend test suite is **379/379 green**, the frontend suite is **75/75 green across 15 files**, and `npm run build` is clean. Judge0 remains the one blocked component by design — the coding module is fully built against the real Judge0 API contract, but live execution cannot run on Docker Desktop (see [Judge0](#judge0) below), so that one checkpoint is deferred rather than faked; submission recording, the honest failure path, contest registration and leaderboard scoring were all live-verified and work correctly.
+
+**The §75 audit found three problems. All three are now fixed and re-verified:**
+- **✅ Fixed — "Faculty can send authorized announcements."** `POST /api/announcements` now admits FACULTY as well as ADMIN, and `AnnouncementService` enforces the narrower faculty rule per-row rather than refusing outright: a faculty member may announce to their **own department only**, and may edit or delete **only announcements they created**. Verified live — faculty1 posting to their own department returns `201` with a real fan-out to 7 recipients, while the same token targeting `ALL` or another department gets `403`, a student gets `403`, and a second faculty attempting to delete another's announcement gets `403` where the creator gets `204`.
+- **✅ Fixed — the seed-data boot banner.** The credential banner now renders real values instead of literal `{}` placeholders.
+- **✅ Fixed — 500 on a missing or malformed query parameter.** `GlobalExceptionHandler` now handles `MissingServletRequestParameterException` and `MethodArgumentTypeMismatchException`, so those endpoints return the clean §47 `400` envelope instead of an opaque `500`.
+
+**One item remains not exercised**: the visual responsive pass (desktop/laptop/tablet/mobile) has never been independently re-verified with a real browser — no browser automation tool was available in the sessions that tried. Code inspection confirms real responsive infrastructure exists (Tailwind `sm:`/`lg:` breakpoints, a `lg:hidden` hamburger driving a `MobileNavDrawer`, a viewport meta tag, media queries in the built CSS), but that is not the same as an observed rendering pass and is reported as such rather than claimed.
+
+Full detail, exact reproduction steps, and the complete item-by-item §75/§61 verification record are in `PROJECT_PLAN.md`'s Phase 12 note — that is the source of truth for what has actually been verified, not this summary.
 
 Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, which also records the confirmed technical decisions and the ten clarifications (G1–G10) resolving gaps in the original scope document.
+
+**Two guides sit alongside this README:**
+- **[`docs/how-it-works.md`](docs/how-it-works.md)** — the whole system explained three ways in one document: how it is built and where to change it (developer), what each role can actually do (user), and how to satisfy yourself that any of it is real (evaluator).
+- **[`docs/demo-playbook.md`](docs/demo-playbook.md)** — what the seeder leaves empty, how to populate those modules before a demonstration, and a running order that shows the genuinely unusual features to best effect.
 
 | Phase | Module | Status |
 |---|---|---|
@@ -27,9 +40,9 @@ Progress is tracked phase by phase in **[`PROJECT_PLAN.md`](PROJECT_PLAN.md)**, 
 | 9 | Resume — builder, templates, PDF export | ✅ Done |
 | 10 | Interview — question bank, scheduling | ✅ Done |
 | 11 | Real-Time — WebSocket notifications, announcements | ✅ Done |
-| 12 | Finalization — Swagger, seed data, testing, deployment | ⬜ Not started |
+| 12 | Finalization — Swagger, seed data, testing, deployment | ✅ Done; all three §75 audit findings fixed and re-verified (see above) |
 
-The setup instructions below describe the intended workflow. Commands that depend on code from a phase that has not shipped will not work yet.
+The setup instructions below describe the current, intended workflow, including Phase 12 additions (Swagger UI, seed data, frontend tests, deployment configuration). Where a Phase 12 command could not be executed this session because it depends on another concurrently-running slice, that is marked explicitly rather than presented as verified.
 
 Every checkpoint above was verified by actually performing it — booting the application against the real MySQL container, driving the API over HTTP, and reading OTP mail out of Mailpit — never by inspection alone. Where verification found defects, both the defect and its root cause are recorded in `PROJECT_PLAN.md` rather than quietly fixed.
 
@@ -136,6 +149,7 @@ External integrations, each behind a service abstraction:
 | Charts | Chart.js / react-chartjs-2 |
 | Editor | Monaco (coding playground) |
 | Real-time | WebSocket client |
+| Testing | Vitest, React Testing Library |
 
 ### Infrastructure
 | Service | Runs in | Port |
@@ -144,7 +158,7 @@ External integrations, each behind a service abstraction:
 | Judge0 | Docker (profile-gated, see below) | 2358 |
 | Mailpit (dev SMTP) | Docker | 1025 SMTP / 8025 UI |
 | Backend | Host (JVM) | 8080 |
-| Frontend | Host (Vite) | 5173 |
+| Frontend | Host (Vite) | 5175 |
 
 <a name="judge0"></a>
 **Judge0 does not run on Docker Desktop.** Judge0 1.13.1 bundles isolate 1.8.1, which drives cgroup v1, while Docker Desktop's LinuxKit VM is cgroup-v2 only — every submission fails with `Failed to create control group`. This is not an Apple Silicon issue: amd64 emulation works fine, and an Intel Mac would fail identically. It is therefore kept behind a compose profile and does not start by default:
@@ -206,7 +220,36 @@ To reset the database completely:
 docker compose down -v && docker compose up -d
 ```
 
-Development seed data (admin, faculty, students, departments, courses, subjects, attendance, marks, companies, jobs, coding problems, contests and announcements) is loaded by a dedicated seed profile. Seed passwords are development-only and documented alongside the seed script.
+### Development seed data (§65)
+
+A full development dataset — admin, faculty, students, departments, courses, subjects, attendance, marks, companies, jobs, coding problems, contests and announcements — is loaded by `DevDataSeeder`, but **only when both of the following are true**:
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=seed SMARTCAMPUS_SEED_ENABLED=true ./mvnw spring-boot:run
+```
+
+Neither switch alone does anything — the Spring profile *and* the `smartcampus.seed.enabled` property must both be set, and the seeder additionally refuses to run if `prod` appears anywhere in the active profiles. This is deliberate: seed data is real fake data (§69/§65 both apply — it must never become something a real deployment quietly depends on), so it is designed to require two independent, explicit opt-ins rather than firing on a normal boot or a partially-copied environment file.
+
+> ⚠️ **These passwords are development-only. Never use them, or this activation path, against a production database.**
+
+| Role | Email(s) | Password |
+|---|---|---|
+| Admin | `admin@smartcampus.local` | `Admin@Dev12345` |
+| Faculty | `faculty1@smartcampus.local` … `faculty4@smartcampus.local` | `Faculty@Dev12345` |
+| Student | `student1@smartcampus.local` … `student12@smartcampus.local` | `Student@Dev12345` |
+
+### The first administrator in production (§64)
+
+Production never runs the seed profile, so it needs a different, production-safe path to create the very first admin account — `AdminBootstrapRunner`, which runs on every boot (not profile-gated) but is a **logged no-op** unless both `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` are set, and even then only creates an account when **zero** `ADMIN` users currently exist:
+
+```bash
+BOOTSTRAP_ADMIN_EMAIL=admin@yourcollege.edu \
+BOOTSTRAP_ADMIN_PASSWORD="a real, strong, unique password" \
+SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
+```
+
+It is safe to leave both variables set across restarts — after the first admin exists, every subsequent boot sees a non-zero admin count and does nothing. This replaces the old "register a student, then flip their role in MySQL by hand" instruction entirely; that manual step is no longer how this project provisions its first admin.
 
 ---
 
@@ -234,7 +277,7 @@ npm install
 npm run dev
 ```
 
-The app becomes available at `http://localhost:5173`.
+The app becomes available at `http://localhost:5175`. The port is pinned in `vite.config.ts` with `strictPort`, because 5173 and 5174 are used by other local stacks and the backend's CORS allowlist is keyed to this exact origin.
 
 ---
 
@@ -279,6 +322,81 @@ Groq exposes an OpenAI-compatible API, so switching to OpenAI or another compati
 | `JUDGE0_URL` | `http://localhost:2358` for the self-hosted instance |
 | `JUDGE0_API_KEY` | Only required for hosted Judge0 |
 
+### API Documentation & Rate Limiting (§61, §63)
+| Variable | Description |
+|---|---|
+| `SWAGGER_ENABLED` | `true` in dev; set `false` to disable Swagger UI / `/v3/api-docs` (production default — see [Deployment](#deployment)) |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | Requests allowed per caller per window on sensitive auth endpoints (default `20`) |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | Length of that window in seconds (default `60`) |
+
+### Seed Data & Admin Bootstrap (§64, §65)
+| Variable | Description |
+|---|---|
+| `SMARTCAMPUS_SEED_ENABLED` | Must be `true` **together with** `SPRING_PROFILES_ACTIVE=seed` to load development seed data; either alone is a no-op |
+| `BOOTSTRAP_ADMIN_EMAIL` | Production-safe first-admin email; blank = no-op |
+| `BOOTSTRAP_ADMIN_PASSWORD` | First-admin password; blank = no-op. Creates one `ADMIN` only when zero exist |
+
+### Production Profile (§71)
+| Variable | Description |
+|---|---|
+| `SPRING_PROFILES_ACTIVE` | Set to `prod` to activate `application-prod.properties` (Swagger off by default, SQL logging off, actuator limited to health, Flyway out-of-order off) — see [Deployment](#deployment) |
+
+---
+
+## API Documentation
+
+Interactive OpenAPI documentation, with JWT-authenticated live API testing (§63):
+
+| Surface | URL |
+|---|---|
+| Swagger UI | http://localhost:8080/swagger-ui.html |
+| Raw OpenAPI JSON | http://localhost:8080/v3/api-docs |
+
+Endpoints are organized into 13 documentation groups, matching §63 exactly: **Authentication, Student APIs, Faculty APIs, Admin APIs, Attendance, Marks, Analytics, AI, Coding, Placement, Resume, Interview, Notifications.** Pick a group from the dropdown at the top of the Swagger UI page to see just that module's endpoints.
+
+**Calling an authenticated endpoint through Swagger UI, step by step:**
+
+1. Open http://localhost:8080/swagger-ui.html.
+2. Expand **Authentication**, find `POST /api/auth/login`, click **Try it out**, and submit a real account's email/password (a seeded one works — see [Database Setup](#database-setup)).
+3. Copy the `token` field out of the response body.
+4. Click the **Authorize** button (top right, padlock icon). In the `bearerAuth` field, paste the token — just the raw JWT, Swagger UI adds the `Bearer ` prefix itself.
+5. Click **Authorize**, then **Close**. Every subsequent "Try it out" call across every group now carries that token in its `Authorization` header, so you can exercise any endpoint the account's role is allowed to reach.
+
+Set `SWAGGER_ENABLED=false` to turn this off entirely (recommended once a deployment's API surface shouldn't be publicly browsable — see [Deployment](#deployment)).
+
+Every endpoint documented in Swagger UI is also summarized here for quick reference:
+
+```
+/api/auth          register, login, me, password-reset (request / verify / reset)
+/api/users         admin-only account provisioning
+/api/departments   /api/courses      /api/subjects
+/api/students      /api/faculty      /api/enrollments
+/api/faculty-subject-assignments
+/api/attendance    /api/exams        /api/marks        /api/grade-bands
+/api/analytics     /api/performance-bands
+/api/ai            conversations, explanations, study plans, practice questions
+/api/problems      /api/coding       /api/contests     /api/leaderboard
+/api/companies     /api/jobs         /api/applications
+/api/resumes       /api/interviews
+/api/notifications /api/announcements     (plus the JWT-authenticated WebSocket)
+```
+
+Writes to reference data (departments, courses, subjects) and all enrolment and assignment management are `ADMIN`-only; reads are open to any authenticated role. Students may read and update only their own profile — requesting another student's record returns `404` rather than `403`, so an ID cannot be probed to distinguish "not yours" from "does not exist".
+
+Errors use a consistent envelope, and stack traces are never returned to clients:
+
+```json
+{
+  "timestamp": "2026-08-18T10:15:30Z",
+  "status": 404,
+  "error": "NOT_FOUND",
+  "message": "Student not found",
+  "path": "/api/students/10"
+}
+```
+
+Large collections are paginated, returning `content`, `page`, `size`, `totalElements` and `totalPages`. Search and filtering are performed server-side.
+
 ---
 
 ## Authentication
@@ -317,61 +435,12 @@ cd frontend && npm run dev
 
 | Surface | URL |
 |---|---|
-| Application | http://localhost:5173 |
+| Application | http://localhost:5175 |
 | API | http://localhost:8080 |
 | Mailpit inbox | http://localhost:8025 |
-| Swagger UI | http://localhost:8080/swagger-ui.html *(Phase 12)* |
+| Swagger UI | http://localhost:8080/swagger-ui.html |
 
-**Creating the first administrator.** Self-registration only ever creates a student, and provisioning staff accounts requires an existing admin — so the very first admin has to be promoted by hand:
-
-```bash
-# register normally at /register, then:
-docker exec smartcampus-mysql mysql -usmartcampus -psmartcampus smartcampus \
-  -e "UPDATE users SET role='ADMIN' WHERE email='you@example.com';"
-```
-
-Seed data that removes this manual step is Phase 12 scope.
-
----
-
-## API Documentation
-
-Interactive OpenAPI documentation at `/swagger-ui.html` arrives in Phase 12; until then the endpoints below are exercised directly over HTTP.
-
-**Live today (Phases 2–11):**
-
-```
-/api/auth          register, login, me, password-reset (request / verify / reset)
-/api/users         admin-only account provisioning
-/api/departments   /api/courses      /api/subjects
-/api/students      /api/faculty      /api/enrollments
-/api/faculty-subject-assignments
-/api/attendance    /api/exams        /api/marks        /api/grade-bands
-/api/analytics     /api/performance-bands
-/api/ai            conversations, explanations, study plans, practice questions
-/api/problems      /api/coding       /api/contests     /api/leaderboard
-/api/companies     /api/jobs         /api/applications
-/api/resumes       /api/interviews
-/api/notifications /api/announcements     (plus the JWT-authenticated WebSocket)
-```
-
-**Not yet built:** Swagger UI and seed data (Phase 12).
-
-Writes to reference data (departments, courses, subjects) and all enrolment and assignment management are `ADMIN`-only; reads are open to any authenticated role. Students may read and update only their own profile — requesting another student's record returns `404` rather than `403`, so an ID cannot be probed to distinguish "not yours" from "does not exist".
-
-Errors use a consistent envelope, and stack traces are never returned to clients:
-
-```json
-{
-  "timestamp": "2026-08-18T10:15:30Z",
-  "status": 404,
-  "error": "NOT_FOUND",
-  "message": "Student not found",
-  "path": "/api/students/10"
-}
-```
-
-Large collections are paginated, returning `content`, `page`, `size`, `totalElements` and `totalPages`. Search and filtering are performed server-side.
+**Creating the first administrator.** Self-registration only ever creates a student, and provisioning staff accounts requires an existing admin, so *something* has to create the first one. There is no more hand-editing the database for this: use either the [development seed data](#database-setup) (`SPRING_PROFILES_ACTIVE=seed SMARTCAMPUS_SEED_ENABLED=true`, gives you `admin@smartcampus.local`) for local work, or `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` (see [Database Setup](#database-setup)) for a real deployment — both are documented in full there.
 
 ---
 
@@ -380,43 +449,75 @@ Large collections are paginated, returning `content`, `page`, `size`, `totalElem
 ### Backend
 ```bash
 cd backend
-./mvnw test                  # 31/31 green as of Phase 3
+./mvnw test                  # 299+ green (see PROJECT_PLAN.md's Phase Tracker for the exact, currently-verified count)
 ./mvnw verify                # full suite including integration tests
 ```
 
 Repository and integration tests run against a real MySQL instance via Testcontainers rather than an in-memory substitute, so migrations and SQL dialect behaviour are genuinely exercised. No environment variables are required — `src/test/resources/application.properties` supplies a throwaway JWT signing key so a fresh clone can run the suite immediately.
 
-Current coverage: registration, login, duplicate email, non-enumerating invalid credentials, JWT validation including tampered and expired tokens, role denial against a real admin-only endpoint, OTP reset round trip with attempt-cap enforcement, cross-student access attempts across every route that returns student data, faculty subject/section scoping, privilege escalation sweeps, SQL-level pagination, and the G1 activation flow. Attendance, marks, placement, coding and notification coverage arrives with the phases that build them.
+Coverage spans every phase: registration, login, duplicate email, non-enumerating invalid credentials, JWT validation including tampered and expired tokens, role denial against real admin-only endpoints, OTP reset round trip with attempt-cap enforcement, cross-student/cross-faculty access attempts and privilege-escalation sweeps, SQL-level pagination, attendance and grading math (including boundary cases), placement eligibility rules and application concurrency, coding verdict aggregation and contest scoring, interview-scheduling conflict detection under concurrent load, and real-time notification fan-out and per-user WebSocket isolation. Phase 12 adds a dedicated §61 security-verification suite (BCrypt, JWT, authorization, input validation, SQL-injection protection, CORS, secure headers, rate limiting, OTP expiry, login error handling, no-password-in-response, no-secrets-in-git) as its own test package, written by an agent other than the one implementing the corresponding security code, specifically so a security control isn't graded by the same hand that built it.
 
 ### Frontend
-No test runner is installed yet — frontend tests are Phase 12 scope. The build and linter are the current gates:
-
 ```bash
 cd frontend
+npm test                     # vitest run — full suite, once
+npm run test:watch           # vitest — watch mode
+npm run test:coverage        # vitest run --coverage
 npm run build                # tsc -b + vite build
 npm run lint                 # oxlint
 ```
+
+Phase 12 adds the frontend test runner (Vitest + React Testing Library) and covers the authentication flow (login/logout, token persistence, protected-route redirects), API integration (requests, error envelopes, auth header injection) and form validation, per §64's frontend testing requirement. HTTP is exercised through direct module mocking (`vi.mock`) and, for the axios interceptor tests specifically, a hand-written fake `axios` adapter driving the real interceptor logic end to end — not MSW, which was evaluated and deliberately dropped since every backend call already goes through one shared axios instance already fully under test control. See `PROJECT_PLAN.md`'s Phase 12 note for the exact test count as verified against a real run — this README does not restate a number that could drift out of sync with it.
 
 ---
 
 ## Deployment
 
+Full detail, including a real "what must change for production" checklist (not platitudes), is in **[`docs/deployment.md`](docs/deployment.md)**. Short version:
+
 ```
-Internet → React (static build) → Spring Boot → MySQL
-                                       │
-                                       ├── AI API
-                                       ├── Judge0
-                                       ├── SMTP
-                                       └── WebSocket
+                    Internet
+                       │  HTTPS (terminated in front of this stack)
+              ┌────────▼────────┐
+              │  React Frontend │   nginx: static bundle + SPA fallback +
+              └────────┬────────┘   reverse proxy for /api and /ws
+                       │
+              ┌────────▼────────┐
+              │  Spring Boot    │
+              └────────┬────────┘
+         ┌──────────────┼──────────────┬───────────────┐
+         ▼              ▼              ▼               ▼
+     ┌───────┐    ┌───────────┐  ┌───────────┐   ┌─────────────┐
+     │ MySQL │    │  AI API   │  │  Judge0   │   │    SMTP     │
+     └───────┘    └───────────┘  └───────────┘   └─────────────┘
 ```
+
+### Containers
+
+`backend/Dockerfile` and `frontend/Dockerfile` are both multi-stage builds (Maven → JRE 21 for the backend, Node → nginx for the frontend), verified in this repository by actually running `docker build` for both — see `docs/deployment.md` §6 for the exact commands and result. `docker-compose.prod.yml` wires frontend + backend + MySQL together for a single-host deployment, with every credential read from the environment and nothing committed.
 
 ```bash
-cd frontend && npm run build      # emits dist/
-cd backend && ./mvnw clean package -DskipTests
-java -jar target/smartcampus-*.jar
+cp .env.example .env    # fill in REAL production values first — see the checklist below
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-All deployment configuration is supplied through environment variables. Production requires a real SMTP provider in place of Mailpit, a strong `JWT_SECRET` unique to the environment, HTTPS termination, and a CORS allowlist restricted to the deployed frontend origin.
+### What must change for production — the real list
+
+| Dev default | Production requirement |
+|---|---|
+| `CORS_ALLOWED_ORIGINS=http://localhost:5175,http://localhost:5173,http://localhost:5174` | Narrow to the deployed frontend's real origin only. **This is the single most dangerous default in the config** — left as-is, any site can drive authenticated requests against a live API using a stolen token. |
+| `JWT_SECRET=` (empty) | Generate a real one: `openssl rand -base64 48`. The empty default is deliberate — the app fails to boot rather than signing tokens with a guessable key. That failure is a feature, not a bug to route around. |
+| `SWAGGER_ENABLED` unset (defaults true) | Set `false` if the API surface shouldn't be public. `application-prod.properties` already flips the default to false under `SPRING_PROFILES_ACTIVE=prod`. |
+| `FLYWAY_OUT_OF_ORDER=true` | Set `false` against a fresh database. It is `true` here only because parallel build waves applied this repo's dev-database migrations out of numeric order — a real production database gets V1..V12 in order and should fail loudly on anything else. |
+| `SMTP_HOST=localhost` (Mailpit) | Real SMTP provider credentials. |
+| `JUDGE0_URL=http://localhost:2358` (non-functional here) | A Judge0 instance actually reachable from the backend container — see the honesty note below. |
+| No TLS in this repo | HTTPS termination in front of the stack. Without it, the `Strict-Transport-Security` header never actually engages. |
+| `DB_USERNAME=smartcampus` / `DB_PASSWORD=smartcampus` | Credentials unique to the deployment — `docker-compose.prod.yml` has no default and refuses to start without them. |
+| (no profile) | `SPRING_PROFILES_ACTIVE=prod`, and the `seed` profile **never** included. |
+
+**Judge0 — still unresolved (honesty note).** The coding module is fully built against the real Judge0 API contract, but live code execution cannot run on this development machine: Docker Desktop's LinuxKit VM is cgroup-v2-only, and Judge0 1.13.1's bundled `isolate` sandbox requires cgroup v1, so every submission returns status 13 Internal Error (measured, not assumed — see `docs/judge0-notes.md`). `docker-compose.prod.yml` does not self-host Judge0 for this reason; a real deployment needs `JUDGE0_URL` pointed at either a hosted instance (e.g. RapidAPI) or a genuinely cgroup-v1 host. This is not solved by any file in this phase — see `docs/deployment.md` §4 for the full explanation.
+
+**File upload validation (§61) — not applicable.** This system has no file upload capability anywhere: zero `MultipartFile` references, no multipart config, no `profileImage` column on `Student`, no `logo` column on `Company`. The one file-shaped feature that exists is a server-generated resume PDF *download* (`GET /api/resumes/{id}/pdf`) — nothing is ever uploaded into the system. See `docs/deployment.md` §3.
 
 ---
 
@@ -425,6 +526,7 @@ All deployment configuration is supplied through environment variables. Producti
 ```
 SmartCampusERP/
 ├── backend/
+│   ├── Dockerfile                # multi-stage: Maven build → JRE 21 runtime
 │   └── src/
 │       ├── main/
 │       │   ├── java/smartcampus/
@@ -433,15 +535,21 @@ SmartCampusERP/
 │       │   │   ├── dto/             # request and response DTOs
 │       │   │   ├── entity/          # JPA entities
 │       │   │   ├── exception/       # custom exceptions, global handler
+│       │   │   ├── realtime/        # WebSocket handling (Phase 11)
 │       │   │   ├── repository/      # Spring Data repositories
 │       │   │   ├── security/        # JWT filter, security config
+│       │   │   ├── seed/            # DevDataSeeder, AdminBootstrapRunner (Phase 12)
 │       │   │   ├── service/         # business logic
 │       │   │   └── util/
 │       │   └── resources/
 │       │       ├── application.properties
-│       │       └── db/migration/    # Flyway migrations
+│       │       ├── application-prod.properties   # production overrides (Phase 12)
+│       │       └── db/migration/    # Flyway migrations, V1–V11 (V12 unclaimed)
 │       └── test/
 ├── frontend/
+│   ├── Dockerfile                # multi-stage: Node build → nginx runtime
+│   ├── nginx.conf                # SPA fallback + /api, /ws reverse proxy
+│   ├── .env.example
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
@@ -450,14 +558,23 @@ SmartCampusERP/
 │   │   ├── hooks/
 │   │   ├── context/             # auth and app state
 │   │   ├── routes/              # protected and role-based routing
+│   │   ├── lib/
+│   │   ├── types/
 │   │   ├── utils/
 │   │   ├── assets/
+│   │   ├── test/                # Vitest setup (jest-dom, RTL cleanup) (Phase 12)
 │   │   └── App.tsx
 │   ├── package.json
 │   └── vite.config.ts
 ├── docs/
-│   └── SmartCampus-ERP-Scope.pdf
-├── docker-compose.yml
+│   ├── SmartCampus-ERP-Scope.pdf
+│   ├── scope-extracted.md
+│   ├── how-it-works.md          # the system explained for developers, users and evaluators
+│   ├── demo-playbook.md         # populating data and running a live demonstration
+│   ├── judge0-notes.md
+│   └── deployment.md            # detailed production deployment guide (Phase 12)
+├── docker-compose.yml           # dev supporting services: MySQL + Mailpit (+ Judge0, gated)
+├── docker-compose.prod.yml      # frontend + backend + MySQL containers (Phase 12)
 ├── PROJECT_PLAN.md
 ├── README.md
 ├── .env.example
@@ -470,7 +587,7 @@ JPA entities are never exposed directly from the API — every endpoint speaks i
 
 ## Screenshots
 
-Added as each phase ships. See the [Build Status](#build-status) table for current progress.
+Not captured yet. No image files exist in this repository to link to — this section will be filled in with real captures rather than placeholder links.
 
 ---
 

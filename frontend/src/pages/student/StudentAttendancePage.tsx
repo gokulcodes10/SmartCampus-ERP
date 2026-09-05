@@ -150,7 +150,7 @@ export default function StudentAttendancePage() {
               </span>
               {summary.lowAttendance && <Badge variant="destructive">Below minimum</Badge>}
             </div>
-            <div className="grid grid-cols-3 gap-4 text-sm sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <div>
                 <p className="text-muted-foreground">Held</p>
                 <p className="font-medium">{summary.heldClasses}</p>

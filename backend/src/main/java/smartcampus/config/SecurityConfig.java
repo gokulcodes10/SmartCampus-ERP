@@ -5,15 +5,25 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.HeaderWriter;
+import org.springframework.security.web.header.writers.ContentSecurityPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import smartcampus.security.AuthRateLimitFilter;
 import smartcampus.security.JwtAccessDeniedHandler;
 import smartcampus.security.JwtAuthenticationEntryPoint;
 import smartcampus.security.JwtAuthenticationFilter;
@@ -34,6 +44,41 @@ import smartcampus.security.JwtAuthenticationFilter;
  *
  * <p>CORS is opened for the Vite dev origin only (§61) — credentials are not needed
  * since the token travels in the {@code Authorization} header, not a cookie.
+ *
+ * <p><strong>Phase 12 additions (§61, §63):</strong>
+ *
+ * <ul>
+ *   <li><strong>Swagger UI / OpenAPI JSON</strong> — {@code /v3/api-docs/**} and
+ *       {@code /swagger-ui/**} (plus the {@code /swagger-ui.html} redirect target)
+ *       are permitAll, placed among the other unauthenticated matchers, before
+ *       {@code anyRequest().authenticated()}. Nothing else is loosened. Whether the
+ *       docs are reachable at all is a separate switch — {@code
+ *       springdoc.api-docs.enabled} / {@code springdoc.swagger-ui.enabled} (both
+ *       {@code SWAGGER_ENABLED}) in {@code application.properties} — for turning them
+ *       off in production without touching this matcher list.
+ *   <li><strong>Secure headers</strong> — configured explicitly below rather than
+ *       relying on Spring Security's built-in header defaults, so every value is
+ *       visible and testable in one place ({@code
+ *       smartcampus.hardening.SecurityHeadersTest}): {@code X-Frame-Options: DENY},
+ *       {@code X-Content-Type-Options: nosniff}, {@code Referrer-Policy:
+ *       strict-origin-when-cross-origin}, a {@code Permissions-Policy}, and a {@code
+ *       Content-Security-Policy} that is deliberately <em>two different policies</em>
+ *       depending on the request path — see {@link #swaggerContentSecurityPolicyWriter()}
+ *       for why a single strict policy would blank Swagger UI. <strong>HSTS is NOT
+ *       configured here and Spring Security never emits it in this deployment</strong>:
+ *       {@code HeadersConfigurer}'s HSTS writer only fires over HTTPS (it checks
+ *       {@code request.isSecure()}), and this application is served over plain HTTP in
+ *       every environment exercised so far (local dev, and Docker Compose without a
+ *       TLS-terminating proxy in front). Putting a real HSTS value in the response
+ *       here would be a false claim the app cannot back up; a production deployment
+ *       that terminates TLS at a reverse proxy should add HSTS at that proxy, not
+ *       here.
+ *   <li><strong>Auth endpoint rate limiting</strong> — {@link AuthRateLimitFilter} is
+ *       registered with {@code addFilterBefore(..., JwtAuthenticationFilter.class)}
+ *       so it runs for unauthenticated requests too (a login attempt has no JWT to
+ *       authenticate with). See that class's Javadoc for the keying, window, and
+ *       honesty notes on what an in-memory counter can and cannot guarantee.
+ * </ul>
  */
 @Configuration
 @EnableWebSecurity
@@ -44,6 +89,36 @@ public class SecurityConfig {
     private static final String AUTH_REGISTER = "/api/auth/register";
     private static final String AUTH_LOGIN = "/api/auth/login";
     private static final String AUTH_PASSWORD_RESET = "/api/auth/password-reset/**";
+
+    /**
+     * Phase 12 API-documentation routes (§63). MUST stay permitAll — Swagger UI has
+     * to load and call {@code /v3/api-docs} before a caller has ever obtained a JWT.
+     */
+    private static final String API_DOCS = "/v3/api-docs";
+    private static final String API_DOCS_SUBPATHS = "/v3/api-docs/**";
+    private static final String SWAGGER_UI_HTML = "/swagger-ui.html";
+    private static final String SWAGGER_UI_SUBPATHS = "/swagger-ui/**";
+
+    /**
+     * The two §61 Content-Security-Policy directive sets. {@code API} is deliberately
+     * as strict as an API that serves only JSON can be: no script/style/frame sources
+     * of any kind, since a pure REST endpoint should never execute or render anything.
+     * {@code SWAGGER} is looser because springdoc's bundled Swagger UI is real
+     * same-origin HTML/CSS/JS that injects {@code <style>} tags and runs bundled JS at
+     * runtime — {@code default-src 'none'} on that path would render a blank page.
+     * Both still forbid framing (no {@code frame-ancestors}) and any third-party
+     * origin; {@code 'unsafe-inline'} is scoped to the Swagger path only, never to the
+     * rest of the API.
+     */
+    private static final String CSP_API = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+    private static final String CSP_SWAGGER =
+            "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+                    + "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                    + "img-src 'self' data:; font-src 'self' data:; connect-src 'self'";
+
+    /** No camera/microphone/geolocation/payment access from any page this API ever serves. */
+    private static final String PERMISSIONS_POLICY =
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
 
     /** Admin-only user administration — staff provisioning per clarification G1. */
     private static final String USERS_ADMIN = "/api/users/**";
@@ -182,8 +257,11 @@ public class SecurityConfig {
      *     ?token= JWT, resolves the user, requires enabled=true, and returns 401 itself
      *     otherwise. permitAll here means "Spring Security does not gate the upgrade",
      *     not "anyone may connect".
-     * (2) GET /api/announcements/manage is ADMIN-only and MUST precede the general
-     *     announcements GET rule, exactly like the job-eligible-students matcher does.
+     * (2) GET /api/announcements/manage is ADMIN/FACULTY-only and MUST precede the
+     *     general announcements GET rule, exactly like the job-eligible-students
+     *     matcher does. Announcement writes are ADMIN or FACULTY at the route level
+     *     (§42 "admin/faculty-authorized"); AnnouncementService enforces the narrower
+     *     per-row rules (faculty: own department only, modify own announcements only).
      */
     private static final String WEBSOCKET = "/ws/**";
     private static final String NOTIFICATIONS = "/api/notifications";
@@ -193,17 +271,20 @@ public class SecurityConfig {
     private static final String ANNOUNCEMENTS_MANAGE = "/api/announcements/manage";
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
     private final List<String> allowedOrigins;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            AuthRateLimitFilter authRateLimitFilter,
             JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
             JwtAccessDeniedHandler jwtAccessDeniedHandler,
             @Value("${smartcampus.cors.allowed-origins:http://localhost:5173,http://localhost:5174}")
                     List<String> allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.authRateLimitFilter = authRateLimitFilter;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
         this.allowedOrigins = allowedOrigins;
@@ -222,6 +303,8 @@ public class SecurityConfig {
                         .requestMatchers(HEALTH, HEALTH_SUBPATHS).permitAll()
                         .requestMatchers(AUTH_REGISTER, AUTH_LOGIN).permitAll()
                         .requestMatchers(AUTH_PASSWORD_RESET).permitAll()
+                        .requestMatchers(API_DOCS, API_DOCS_SUBPATHS, SWAGGER_UI_HTML, SWAGGER_UI_SUBPATHS)
+                                .permitAll()
                         .requestMatchers(USERS_ADMIN).hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, DEPARTMENTS).hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, DEPARTMENTS_SUBPATHS).hasRole("ADMIN")
@@ -294,18 +377,61 @@ public class SecurityConfig {
                         .requestMatchers(RESUMES, RESUMES_SUBPATHS).authenticated()
                         .requestMatchers(WEBSOCKET).permitAll()
                         .requestMatchers(NOTIFICATIONS, NOTIFICATIONS_SUBPATHS).authenticated()
-                        .requestMatchers(HttpMethod.GET, ANNOUNCEMENTS_MANAGE).hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, ANNOUNCEMENTS).hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, ANNOUNCEMENTS_SUBPATHS).hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, ANNOUNCEMENTS_SUBPATHS).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, ANNOUNCEMENTS_MANAGE).hasAnyRole("ADMIN", "FACULTY")
+                        .requestMatchers(HttpMethod.POST, ANNOUNCEMENTS).hasAnyRole("ADMIN", "FACULTY")
+                        .requestMatchers(HttpMethod.PUT, ANNOUNCEMENTS_SUBPATHS).hasAnyRole("ADMIN", "FACULTY")
+                        .requestMatchers(HttpMethod.DELETE, ANNOUNCEMENTS_SUBPATHS).hasAnyRole("ADMIN", "FACULTY")
                         .requestMatchers(HttpMethod.GET, ANNOUNCEMENTS, ANNOUNCEMENTS_SUBPATHS).authenticated()
                         .anyRequest().authenticated())
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicyHeader(permissions -> permissions.policy(PERMISSIONS_POLICY))
+                        .addHeaderWriter(swaggerContentSecurityPolicyWriter())
+                        .addHeaderWriter(apiContentSecurityPolicyWriter()))
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // Order matters here: JwtAuthenticationFilter must be registered (relative to
+                // UsernamePasswordAuthenticationFilter, a filter Spring Security's comparator
+                // already knows) BEFORE authRateLimitFilter can be registered relative to IT -
+                // addFilterBefore(x, y.class) requires y's position already be known to the
+                // comparator, which only happens once some earlier addFilter* call establishes it.
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Every Swagger/OpenAPI path, shared by both CSP writers below so "is this a
+     * Swagger path" is defined in exactly one place.
+     */
+    private static RequestMatcher swaggerPathsMatcher() {
+        return new OrRequestMatcher(
+                PathPatternRequestMatcher.pathPattern(SWAGGER_UI_HTML),
+                PathPatternRequestMatcher.pathPattern(SWAGGER_UI_SUBPATHS),
+                PathPatternRequestMatcher.pathPattern(API_DOCS),
+                PathPatternRequestMatcher.pathPattern(API_DOCS_SUBPATHS));
+    }
+
+    /**
+     * The looser {@link #CSP_SWAGGER} policy, applied ONLY on Swagger/OpenAPI paths.
+     * Deliberately not {@code .headers(h -> h.contentSecurityPolicy(...))}, which can
+     * only ever set one global policy — {@link DelegatingRequestMatcherHeaderWriter}
+     * is what lets this path get a different policy than the rest of the API.
+     */
+    private HeaderWriter swaggerContentSecurityPolicyWriter() {
+        return new DelegatingRequestMatcherHeaderWriter(
+                swaggerPathsMatcher(), new ContentSecurityPolicyHeaderWriter(CSP_SWAGGER));
+    }
+
+    /** The strict {@link #CSP_API} policy, applied to every path that is NOT Swagger/OpenAPI. */
+    private HeaderWriter apiContentSecurityPolicyWriter() {
+        return new DelegatingRequestMatcherHeaderWriter(
+                new NegatedRequestMatcher(swaggerPathsMatcher()), new ContentSecurityPolicyHeaderWriter(CSP_API));
     }
 
     /**

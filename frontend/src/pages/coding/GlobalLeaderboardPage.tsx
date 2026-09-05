@@ -19,10 +19,18 @@ export default function GlobalLeaderboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Reset loading/error during render when `page` changes, rather than as the first
+  // statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedPage, setFetchedPage] = useState<number | null>(null);
+  if (page !== fetchedPage) {
+    setFetchedPage(page);
     setIsLoading(true);
     setError(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
     leaderboardService
       .getGlobalLeaderboard({ page, size: PAGE_SIZE })
       .then((result) => {

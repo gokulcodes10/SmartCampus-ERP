@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -35,10 +35,13 @@ export function DuplicateResumeDialog({
   error?: string | null;
 }) {
   const [title, setTitle] = useState("");
-
-  useEffect(() => {
+  // Reset the field whenever the dialog opens (not in an effect — adjusted
+  // during render, following https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) setTitle(`${sourceTitle} (copy)`.slice(0, 150));
-  }, [open, sourceTitle]);
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();

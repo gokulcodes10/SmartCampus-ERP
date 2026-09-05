@@ -477,7 +477,7 @@ export function StudyPlanEditor({ planId, onClose, onChanged }: StudyPlanEditorP
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon-sm"
+                  size="icon"
                   disabled={index === 0 || busyItemId === item.id}
                   onClick={() => moveItem(item, "up")}
                 >
@@ -487,7 +487,7 @@ export function StudyPlanEditor({ planId, onClose, onChanged }: StudyPlanEditorP
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon-sm"
+                  size="icon"
                   disabled={index === items.length - 1 || busyItemId === item.id}
                   onClick={() => moveItem(item, "down")}
                 >
@@ -503,14 +503,14 @@ export function StudyPlanEditor({ planId, onClose, onChanged }: StudyPlanEditorP
                 >
                   {item.completed ? "Mark incomplete" : "Mark complete"}
                 </Button>
-                <Button type="button" variant="ghost" size="icon-sm" onClick={() => openEditItem(item)}>
+                <Button type="button" variant="ghost" size="icon" onClick={() => openEditItem(item)}>
                   <PencilIcon />
                   <span className="sr-only">Edit</span>
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
                   onClick={() => {
                     setDeleteItemError(null);
                     setDeleteItemTarget(item);

@@ -5,14 +5,18 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -108,6 +112,60 @@ public class GlobalExceptionHandler {
         String message = "Operation failed due to data integrity constraints. "
                 + "The entity may have dependents that prevent this operation.";
         return build(HttpStatus.CONFLICT, "CONFLICT", message, request);
+    }
+
+    /**
+     * A client-supplied {@code sort} (or other query-bound {@code Pageable}) property
+     * that does not exist on the target entity. Spring Data JPA validates {@code sort}
+     * against the JPA metamodel inside {@code SimpleJpaRepository} and throws this
+     * (frequently wrapping a {@code PropertyReferenceException}) before any SQL is
+     * built — no injection ever reaches the database, but an unknown/malicious column
+     * name is a caller input error, not a server fault, so it belongs at 400, not the
+     * 500 the catch-all below would otherwise produce (§61 input validation /
+     * "SQL injection protection... reject an arbitrary column name").
+     *
+     * <p>Which of the two exception types below is thrown depends on the shape of the
+     * offending value: a {@code sort} value containing characters that fail Spring
+     * Data's own sort-expression syntax check (e.g. punctuation from an injection
+     * payload) throws {@link InvalidDataAccessApiUsageException}; a syntactically
+     * ordinary but nonexistent property name (e.g. {@code thisColumnDoesNotExist})
+     * instead resolves as far as the JPA metamodel lookup and throws {@link
+     * PropertyReferenceException} directly - confirmed live, both are exercised by
+     * {@code smartcampus.security61.SqlInjectionProtectionTest}. Both are handled
+     * identically here: neither is a server fault.
+     */
+    @ExceptionHandler({InvalidDataAccessApiUsageException.class, PropertyReferenceException.class})
+    public ResponseEntity<ErrorResponse> handleInvalidDataAccessApiUsage(
+            RuntimeException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_FAILED",
+                "Invalid request parameter (e.g. an unknown sort/column name).",
+                request);
+    }
+
+    /** A required {@code @RequestParam} the caller did not supply (e.g. omitting {@code date}
+     * on {@code GET /api/attendance/roster}) - a caller input error, not a server fault. */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameter(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_FAILED",
+                "Missing required parameter '" + ex.getParameterName() + "'.",
+                request);
+    }
+
+    /** A query/path value that cannot be converted to the parameter's type
+     * (e.g. {@code ?subjectId=abc} where a numeric id is expected). */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_FAILED",
+                "Invalid value for parameter '" + ex.getName() + "'.",
+                request);
     }
 
     /** Last resort: never let an unmapped exception leak internals or a stack trace to the caller. */

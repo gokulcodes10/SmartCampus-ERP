@@ -58,9 +58,7 @@ export default function GradeBandsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  function loadBands() {
-    setIsLoading(true);
-    setLoadError(null);
+  function fetchBands() {
     gradeBandService
       .listGradeBands()
       .then(setBands)
@@ -68,8 +66,17 @@ export default function GradeBandsPage() {
       .finally(() => setIsLoading(false));
   }
 
+  /** Used by event handlers (create/edit/delete) to reset and re-fetch on demand. */
+  function loadBands() {
+    setIsLoading(true);
+    setLoadError(null);
+    fetchBands();
+  }
+
+  // Mount-only fetch: isLoading/loadError already start at their reset values via
+  // useState above, so the effect only needs to perform the fetch itself.
   useEffect(() => {
-    loadBands();
+    fetchBands();
   }, []);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -260,13 +267,13 @@ export default function GradeBandsPage() {
                     <TableCell className="text-muted-foreground">{band.description || "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon-sm" onClick={() => openEdit(band)}>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(band)}>
                           <PencilIcon />
                           <span className="sr-only">Edit</span>
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => {
                             setDeleteError(null);
                             setDeleteTarget(band);

@@ -59,10 +59,20 @@ export default function ContestDetailPage() {
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(true);
 
-  function load() {
-    if (!id) return;
+  // The loading/error resets that used to run synchronously at the top of these two
+  // effects are adjusted during render instead — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  // Each effect below is left doing only the async fetch, whose own setState calls are
+  // already deferred into .then/.catch/.finally.
+  const [fetchedForId, setFetchedForId] = useState<number | null>(null);
+  if (id && id !== fetchedForId) {
+    setFetchedForId(id);
     setIsLoading(true);
     setLoadError(null);
+  }
+
+  function fetchContest() {
+    if (!id) return;
     contestService
       .getContest(id)
       .then((data) => {
@@ -80,12 +90,18 @@ export default function ContestDetailPage() {
       .finally(() => setIsLoading(false));
   }
 
-  useEffect(load, [id]);
+  useEffect(fetchContest, [id]);
+
+  const leaderboardKey = `${id}:${leaderboardPage}`;
+  const [fetchedLeaderboardKey, setFetchedLeaderboardKey] = useState<string | null>(null);
+  if (id && leaderboardKey !== fetchedLeaderboardKey) {
+    setFetchedLeaderboardKey(leaderboardKey);
+    setIsLeaderboardLoading(true);
+    setLeaderboardError(null);
+  }
 
   useEffect(() => {
     if (!id) return;
-    setIsLeaderboardLoading(true);
-    setLeaderboardError(null);
     contestService
       .getContestLeaderboard(id, { page: leaderboardPage, size: LEADERBOARD_PAGE_SIZE })
       .then((page) => {
@@ -109,7 +125,9 @@ export default function ContestDetailPage() {
     setRegisterError(null);
     try {
       await contestService.registerForContest(id);
-      load();
+      setIsLoading(true);
+      setLoadError(null);
+      fetchContest();
     } catch (err) {
       setRegisterError(extractErrorMessage(err, "Failed to register for this contest."));
     } finally {

@@ -28,7 +28,7 @@ export function PaginationBar({ page, size, totalElements, totalPages, onPageCha
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="default"
           disabled={page <= 0}
           onClick={() => onPageChange(page - 1)}
         >
@@ -41,7 +41,7 @@ export function PaginationBar({ page, size, totalElements, totalPages, onPageCha
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="default"
           disabled={page + 1 >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >

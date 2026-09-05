@@ -29,9 +29,9 @@ export default function StudentMarksPage() {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
+    // Runs once on mount only ([] deps): resultLoading/resultError already start at
+    // their reset values via useState above.
     let cancelled = false;
-    setResultLoading(true);
-    setResultError(null);
     marksService
       .getMySummary({})
       .then((data) => {
@@ -48,10 +48,18 @@ export default function StudentMarksPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Reset loading/error during render when `page` changes, rather than as the first
+  // statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedPage, setFetchedPage] = useState<number | null>(null);
+  if (page !== fetchedPage) {
+    setFetchedPage(page);
     setRecordsLoading(true);
     setRecordsError(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
     marksService
       .listMine({ page, size: RECORDS_PAGE_SIZE })
       .then((data) => {

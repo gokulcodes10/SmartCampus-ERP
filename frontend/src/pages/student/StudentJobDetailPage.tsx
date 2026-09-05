@@ -76,10 +76,18 @@ export default function StudentJobDetailPage() {
       .catch((err) => setResumesError(extractErrorMessage(err, "Failed to load your resumes.")));
   }, []);
 
-  function load() {
-    if (!id) return;
+  // Loading/error reset for the id-driven fetch below happens during render, not as
+  // the first statements inside the effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [fetchedForId, setFetchedForId] = useState<number | null>(null);
+  if (id && id !== fetchedForId) {
+    setFetchedForId(id);
     setIsLoading(true);
     setLoadError(null);
+  }
+
+  function load() {
+    if (!id) return;
     Promise.all([jobService.getJob(id), jobService.getJobEligibility(id)])
       .then(([jobResult, eligibilityResult]) => {
         setJob(jobResult);

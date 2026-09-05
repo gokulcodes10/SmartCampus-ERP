@@ -12,6 +12,11 @@ export default defineConfig({
     },
   },
   server: {
+    // Pinned: 5173 and 5174 are used by other local stacks on this machine, and the
+    // backend's CORS allowlist is keyed to this exact origin. strictPort makes a clash
+    // fail loudly instead of silently drifting to a port CORS will then reject.
+    port: 5175,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',

@@ -213,14 +213,14 @@ export default function AdminInterviewsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => setEditTarget(interview)}>
+                          <Button variant="ghost" size="icon" onClick={() => setEditTarget(interview)}>
                             <PencilIcon />
                             <span className="sr-only">Edit</span>
                           </Button>
                           {canTransition && (
                             <Button
                               variant="ghost"
-                              size="icon-sm"
+                              size="icon"
                               onClick={() => setRescheduleTarget(interview)}
                             >
                               <RefreshCwIcon />
@@ -234,7 +234,7 @@ export default function AdminInterviewsPage() {
                           )}
                           <Button
                             variant="ghost"
-                            size="icon-sm"
+                            size="icon"
                             onClick={() => {
                               setDeleteError(null);
                               setDeleteTarget(interview);

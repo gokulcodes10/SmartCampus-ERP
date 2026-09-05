@@ -105,10 +105,14 @@ export default function JobApplicantsPage() {
   }
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-
-  useEffect(() => {
+  // Clear the selection during render whenever a new page of data arrives, rather
+  // than via an effect — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [selectionForData, setSelectionForData] = useState(data);
+  if (data !== selectionForData) {
+    setSelectionForData(data);
     setSelectedIds(new Set());
-  }, [data]);
+  }
 
   function toggleSelected(appId: number) {
     setSelectedIds((prev) => {

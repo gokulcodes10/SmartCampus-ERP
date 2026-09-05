@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -41,13 +41,17 @@ export function InterviewRescheduleDialog({
   const [end, setEnd] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open || !interview) return;
-    setStart(toDatetimeLocalValue(interview.scheduledStart));
-    setEnd(toDatetimeLocalValue(interview.scheduledEnd));
-    setError(null);
-  }, [open, interview]);
+  // Reset the form whenever the dialog opens (not in an effect — adjusted
+  // during render, following https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open && interview) {
+      setStart(toDatetimeLocalValue(interview.scheduledStart));
+      setEnd(toDatetimeLocalValue(interview.scheduledEnd));
+      setError(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

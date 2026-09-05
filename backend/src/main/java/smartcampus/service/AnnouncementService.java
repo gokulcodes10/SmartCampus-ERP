@@ -37,9 +37,14 @@ import smartcampus.repository.StudentRepository;
 import smartcampus.repository.projection.AnnouncementRecipientCount;
 
 /**
- * §42 admin announcements: create/update/delete, the ACTIVE board (role/department
- * scoped) and the ADMIN management list, plus the audience -&gt; recipient fan-out that
+ * §42 announcements: create/update/delete, the ACTIVE board (role/department
+ * scoped) and the management list, plus the audience -&gt; recipient fan-out that
  * turns one announcement into one owned {@code notifications} row per eligible user.
+ *
+ * <p>Write authorization (§8/§42 "admin/faculty-authorized"): ADMIN may target any
+ * audience; FACULTY may only create DEPARTMENT announcements for their <b>own</b>
+ * department, and may only update/delete announcements they themselves created. The
+ * management list is likewise ADMIN = everything, FACULTY = own announcements only.</p>
  *
  * <p>All the invariants the {@code announcements} CHECK constraints enforce are
  * validated in Java <b>before</b> the row is written — a CHECK violation surfaces as a
@@ -83,9 +88,12 @@ public class AnnouncementService {
 
     @Transactional
     public AnnouncementResponse create(AnnouncementCreateRequest request, User caller) {
-        scopedWriteAuthorizer.requireAdmin(caller);
-
-        Department department = validateAudienceAndDepartment(request.audience(), request.departmentId());
+        Department department;
+        if (scopedWriteAuthorizer.isAdmin(caller)) {
+            department = validateAudienceAndDepartment(request.audience(), request.departmentId());
+        } else {
+            department = requireOwnDepartmentTarget(request, caller);
+        }
         LocalDateTime publishedAt = LocalDateTime.now();
         validateExpiry(request.expiresAt(), publishedAt);
         validateNotBlank(request.title(), request.body());
@@ -104,18 +112,34 @@ public class AnnouncementService {
 
         announcement = announcementRepository.save(announcement);
 
+        // Build the response BEFORE the fan-out: fanOut -> NotificationService#dispatchAll
+        // issues entityManager.clear() to bound memory on a large fan-out, and that clears
+        // the WHOLE shared persistence context of this transaction — including this
+        // announcement and the Department behind it. Reading a lazy association afterwards
+        // (toResponse needs department.getName()) then throws LazyInitializationException.
+        //
+        // This bit specifically when a FACULTY posts: their department arrives as an
+        // uninitialized proxy off Faculty#getDepartment, and resolveRecipients only reads
+        // its id, which a proxy answers without hitting the database — so nothing forced it
+        // to load before the clear. The ADMIN path never showed the bug because its
+        // department comes from a findById that is already fully materialized.
+        //
+        // Same fix as JobService#updateStatus and CodingContestService#update; see
+        // NotificationService#dispatchAll's caller warning.
+        AnnouncementResponse response = toResponse(announcement, null);
+
         int recipientCount = fanOut(announcement);
 
-        return toResponse(announcement, (long) recipientCount);
+        return response.withRecipientCount((long) recipientCount);
     }
 
     @Transactional
     public AnnouncementResponse update(Long id, AnnouncementUpdateRequest request, User caller) {
-        scopedWriteAuthorizer.requireAdmin(caller);
         Announcement announcement =
                 announcementRepository
                         .findById(id)
                         .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + id));
+        requireAdminOrCreator(caller, announcement);
 
         // Re-validate the expiry rule against the STORED publishedAt — this endpoint
         // deliberately carries no audience/departmentId, so re-targeting is out of scope.
@@ -133,11 +157,11 @@ public class AnnouncementService {
 
     @Transactional
     public void delete(Long id, User caller) {
-        scopedWriteAuthorizer.requireAdmin(caller);
         Announcement announcement =
                 announcementRepository
                         .findById(id)
                         .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + id));
+        requireAdminOrCreator(caller, announcement);
         // fk_notifications_announcement is ON DELETE CASCADE — this withdraws the
         // announcement from every recipient's notification centre.
         announcementRepository.delete(announcement);
@@ -162,9 +186,17 @@ public class AnnouncementService {
     @Transactional(readOnly = true)
     public PageResponse<AnnouncementResponse> manage(
             AnnouncementAudience audience, Boolean includeExpired, String q, User caller, Pageable pageable) {
-        scopedWriteAuthorizer.requireAdmin(caller);
-        Specification<Announcement> spec = buildManageFilter(audience, includeExpired, q);
+        boolean admin = scopedWriteAuthorizer.isAdmin(caller);
+        if (!admin && (caller == null || caller.getRole() != Role.FACULTY)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "This operation requires an ADMIN or FACULTY account.");
+        }
+        // FACULTY manage their own announcements only; ADMIN sees everything.
+        Long createdById = admin ? null : caller.getId();
+        Specification<Announcement> spec = buildManageFilter(audience, includeExpired, q, createdById);
         Page<Announcement> page = announcementRepository.findAll(spec, pageable);
+        // Both callers only ever see rows they are entitled to manage, so the
+        // recipientCount column is populated for both.
         return buildResponsePage(page, true);
     }
 
@@ -185,7 +217,11 @@ public class AnnouncementService {
                             .findVisibleById(id, audiences, departmentId, LocalDateTime.now())
                             .orElseThrow(() -> new ResourceNotFoundException("Announcement not found: " + id));
         }
-        Long recipientCount = admin ? recipientCountFor(announcement.getId()) : null;
+        boolean creator =
+                announcement.getCreatedBy() != null
+                        && caller != null
+                        && announcement.getCreatedBy().getId().equals(caller.getId());
+        Long recipientCount = admin || creator ? recipientCountFor(announcement.getId()) : null;
         return toResponse(announcement, recipientCount);
     }
 
@@ -234,6 +270,53 @@ public class AnnouncementService {
     // ------------------------------------------------------------------
     // Validation
     // ------------------------------------------------------------------
+
+    /**
+     * The FACULTY write path (§42 "faculty-authorized"): the caller must be a FACULTY
+     * with a department, the audience must be DEPARTMENT, and the target department
+     * must be their own. A null {@code departmentId} defaults to the caller's own
+     * department rather than failing — there is only one legal value.
+     */
+    private Department requireOwnDepartmentTarget(AnnouncementCreateRequest request, User caller) {
+        if (caller == null || caller.getRole() != Role.FACULTY) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "This operation requires an ADMIN or FACULTY account.");
+        }
+        Department ownDepartment =
+                facultyRepository
+                        .findByUserId(caller.getId())
+                        .map(smartcampus.entity.Faculty::getDepartment)
+                        .orElse(null);
+        if (ownDepartment == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "No department is associated with this faculty account.");
+        }
+        if (request.audience() != AnnouncementAudience.DEPARTMENT) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Faculty may only create DEPARTMENT announcements for their own department.");
+        }
+        if (request.departmentId() != null && !request.departmentId().equals(ownDepartment.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Faculty may only target their own department.");
+        }
+        return ownDepartment;
+    }
+
+    /** ADMIN, or the FACULTY user who created {@code announcement}; anyone else is denied. */
+    private void requireAdminOrCreator(User caller, Announcement announcement) {
+        if (scopedWriteAuthorizer.isAdmin(caller)) {
+            return;
+        }
+        boolean creator =
+                caller != null
+                        && caller.getRole() == Role.FACULTY
+                        && announcement.getCreatedBy() != null
+                        && announcement.getCreatedBy().getId().equals(caller.getId());
+        if (!creator) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Only an admin or the announcement's creator may modify it.");
+        }
+    }
 
     private Department validateAudienceAndDepartment(AnnouncementAudience audience, Long departmentId) {
         if (audience == AnnouncementAudience.DEPARTMENT) {
@@ -357,9 +440,12 @@ public class AnnouncementService {
     // ------------------------------------------------------------------
 
     private Specification<Announcement> buildManageFilter(
-            AnnouncementAudience audience, Boolean includeExpired, String q) {
+            AnnouncementAudience audience, Boolean includeExpired, String q, Long createdById) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (createdById != null) {
+                predicates.add(cb.equal(root.get("createdBy").get("id"), createdById));
+            }
             if (audience != null) {
                 predicates.add(cb.equal(root.get("audience"), audience));
             }
