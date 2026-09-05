@@ -760,12 +760,31 @@ text again.
 **Still open.** The visual responsive pass remains `not_exercised` — no browser automation was available
 in any session that tried. Judge0 execution remains blocked per G10, with decision D1 unresolved.
 
-**Frontend gap deliberately left, not silently dropped.** The faculty announcement capability is complete
-and reachable over the API, but there is still **no faculty-facing composition page** in the React app —
-`/announcements` is the read-only board for every role, and the compose/manage screen
-(`AdminAnnouncementsPage`) is behind an ADMIN route. A faculty member can therefore use this capability
-through the API or Swagger, but not yet through the UI. This is recorded here rather than left for
-someone to discover.
+**Frontend gap now closed (2026-09-05, same day).** The faculty announcement capability was briefly
+API-only, with no composition page in the React app. `FacultyAnnouncementsPage` (`/faculty/announcements`,
+inside the FACULTY role route, linked from the sidebar and the faculty dashboard) closes that.
+
+It is deliberately narrower than `AdminAnnouncementsPage` rather than a copy of it. There is **no audience
+selector and no department selector**: a faculty member's only legal target is their own department, so
+offering ALL/STUDENTS/FACULTY or a department list would render choices the server answers with `403` — a
+§69 control that does nothing. The create request omits `departmentId` entirely and lets the server resolve
+it, and the department is shown as read-only text (from `GET /api/faculty/me`, which had no frontend caller
+until now) so the target is never a mystery. The listing sends no ownership flag either: scoping a faculty
+caller to their own rows is `AnnouncementService.manage`'s decision, and a client-side flag would imply
+otherwise.
+
+Verified against the running backend rather than only through the type checker — the lesson from the Phase 3
+contract-drift defect. The exact payload the page builds was sent over real HTTP: `201` with the department
+auto-filled and a real `recipientCount: 7`; the row then appeared in faculty1's manage list and **not** in
+faculty2's; faculty2 editing it got `403`; a STUDENT hitting the manage endpoint got `403` while still
+seeing the announcement on the read-only board; the creator's delete returned `204` and cascaded the
+notification rows away. All probe data was removed afterwards.
+
+`FacultyAnnouncementsPage.test.tsx` (6 tests) locks the contract details that would otherwise break
+silently: audience pinned to DEPARTMENT, `departmentId` absent from the payload, exactly one combobox in
+the dialog (so a later audience Select fails the test), no ownership flag on the list request, and the
+blocked-with-explanation state when the account has no faculty profile row. Frontend suite is now
+**81/81**.
 
 ---
 

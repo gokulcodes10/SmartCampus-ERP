@@ -148,7 +148,7 @@ You see the classes you actually teach, and only those. The roster you can mark,
 
 **Analytics.** Class and cohort views filtered by course, subject, semester, section and academic year, with real aggregations rather than sampled estimates.
 
-**Announcements.** You may announce to **your own department**, and you may edit or delete only the announcements you created. Broader audiences remain an administrator's decision. Note that this capability currently works through the API and Swagger; a faculty-facing composition screen in the web UI is not yet built.
+**Announcements.** You may announce to **your own department**, and you may edit or delete only the announcements you created. Broader audiences remain an administrator's decision. Your own announcements live at `/faculty/announcements`, which deliberately offers no audience or department selector: the only target you may choose is your own department, so showing a choice the server would refuse would be a control that does nothing.
 
 ## 2.4 As an administrator
 
@@ -205,7 +205,6 @@ This is the part worth reading, because a project that reports nothing outstandi
 |---|---|---|
 | Code execution | Blocked | The sandbox needs cgroup v1; Docker Desktop provides only v2. Everything around execution works; execution itself needs a hosted endpoint or a Linux host. A hosting decision is open and recorded. |
 | Responsive rendering pass | Not exercised | The responsive code is present and inspectable, but no session had a browser automation tool available, so no one has *observed* it render at each breakpoint. Reported as unverified rather than claimed. |
-| Faculty announcement UI | Not built | The capability works through the API. The composition screen for faculty in the web app does not exist yet. |
 | File upload validation | Not applicable | The application has no file upload of any kind, confirmed by scanning for multipart handling. Noted as a scope gap rather than ticked off. |
 
 Each of these is recorded in `PROJECT_PLAN.md` with its reasoning. The project's verification record also documents the defects found *after* build agents reported success, including the security-relevant ones, rather than quietly fixing them.

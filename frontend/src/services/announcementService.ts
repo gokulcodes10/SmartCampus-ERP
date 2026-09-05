@@ -15,11 +15,20 @@ import type {
  *   GET    /api/announcements?page&size&sort                 -> 200 Page<AnnouncementResponse>
  *          Active board scoped to the caller's role/department, server-side. Any role.
  *   GET    /api/announcements/manage?audience&includeExpired&q&page&size&sort
- *          -> 200 Page<AnnouncementResponse>. ADMIN only — every announcement, not just active ones.
+ *          -> 200 Page<AnnouncementResponse>. ADMIN or FACULTY, and the SERVER decides
+ *          the scope: an ADMIN sees every announcement, a FACULTY sees only the ones
+ *          they created. There is no client-supplied "mine" flag, and adding one would
+ *          be security theatre — the filter is applied in AnnouncementService.manage.
  *   GET    /api/announcements/{id}                             -> 200 AnnouncementResponse (404 if not visible)
- *   POST   /api/announcements   AnnouncementCreateRequest       -> 201 AnnouncementResponse (ADMIN)
- *   PUT    /api/announcements/{id} AnnouncementUpdateRequest    -> 200 AnnouncementResponse (ADMIN)
- *   DELETE /api/announcements/{id}                              -> 204                      (ADMIN)
+ *   POST   /api/announcements   AnnouncementCreateRequest       -> 201 AnnouncementResponse
+ *   PUT    /api/announcements/{id} AnnouncementUpdateRequest    -> 200 AnnouncementResponse
+ *   DELETE /api/announcements/{id}                              -> 204
+ *
+ * *** WHO MAY WRITE ***: ADMIN may target any audience. FACULTY may create only a
+ * DEPARTMENT announcement for their OWN department, and may update or delete only the
+ * announcements they created; anything else is a 403 from the service layer, not just
+ * the route rule. A faculty caller may omit `departmentId` entirely on create — the
+ * server fills in their own department, which is the only legal value.
  *
  * *** QUERY-PARAMETER TRAP (the same one interviewService.ts documents) ***:
  * `useServerTable` always sends the search box's value as `search`; the manage
@@ -41,7 +50,7 @@ export async function listBoard(params: AnnouncementBoardParams = {}): Promise<A
   return data;
 }
 
-/** ADMIN only — GET /api/announcements/manage. */
+/** ADMIN (everything) or FACULTY (own announcements only) — GET /api/announcements/manage. */
 export async function listManaged(params: AnnouncementManageParams = {}): Promise<AnnouncementPage> {
   const { search, ...rest } = params;
   const { data } = await api.get<AnnouncementPage>(`${BASE}/manage`, {
@@ -55,13 +64,13 @@ export async function getAnnouncement(id: number): Promise<AnnouncementResponse>
   return data;
 }
 
-/** ADMIN only. */
+/** ADMIN (any audience) or FACULTY (own department only). */
 export async function createAnnouncement(payload: AnnouncementCreateRequest): Promise<AnnouncementResponse> {
   const { data } = await api.post<AnnouncementResponse>(BASE, payload);
   return data;
 }
 
-/** ADMIN only. Never sends audience/departmentId — see the FIELD-DROP TRAP note above. */
+/** ADMIN, or the FACULTY creator. Never sends audience/departmentId — see the FIELD-DROP TRAP note above. */
 export async function updateAnnouncement(
   id: number,
   payload: AnnouncementUpdateRequest,
@@ -70,7 +79,7 @@ export async function updateAnnouncement(
   return data;
 }
 
-/** ADMIN only. Cascades: withdraws the announcement from every recipient's notification centre. */
+/** ADMIN, or the FACULTY creator. Cascades: withdraws it from every recipient's notification centre. */
 export async function deleteAnnouncement(id: number): Promise<void> {
   await api.delete(`${BASE}/${id}`);
 }

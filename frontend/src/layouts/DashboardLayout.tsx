@@ -21,6 +21,13 @@ const CODING_LINKS: SidebarNavLink[] = [
  * placement (job browsing + the caller's own applications) and Phase 10 interview
  * prep/scheduling all live here since they render only for user.role === "STUDENT".
  */
+const FACULTY_LINKS: SidebarNavLink[] = [
+  { to: "/faculty/attendance", label: "Attendance" },
+  { to: "/faculty/exams", label: "Exams" },
+  { to: "/faculty/marks", label: "Marks" },
+  { to: "/faculty/announcements", label: "My Announcements" },
+];
+
 const STUDENT_AI_LINKS: SidebarNavLink[] = [
   { to: "/student/ai", label: "AI Assistant" },
   { to: "/student/study-plans", label: "Study Plans" },
@@ -64,6 +71,7 @@ export function DashboardLayout() {
       { to: "/announcements", label: "Announcements" },
       ...CODING_LINKS,
       ...(user.role === "STUDENT" ? STUDENT_AI_LINKS : []),
+      ...(user.role === "FACULTY" ? FACULTY_LINKS : []),
     ];
   }, [user]);
 

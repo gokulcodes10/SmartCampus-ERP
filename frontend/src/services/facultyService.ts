@@ -13,6 +13,8 @@ import type {
  *
  *   GET    /api/faculty?page&size&q&status&departmentId -> 200 Page<FacultyResponse> (ADMIN)
  *          (no `sort` param — results are always newest-first, `id DESC`)
+ *   GET    /api/faculty/me                              -> 200 FacultyResponse       (FACULTY)
+ *          The caller's own profile. 404 if the calling account has no faculty row.
  *   PUT    /api/faculty/{id}   FacultyUpdateRequest      -> 200 FacultyResponse       (ADMIN)
  *          `status` IS part of this payload (unlike Student's PUT) — this is how
  *          deactivate/reactivate are implemented for faculty, by sending the existing
@@ -42,6 +44,19 @@ import type {
  */
 
 const BASE = "/api/faculty";
+
+/**
+ * The calling FACULTY user's own profile — `GET /api/faculty/me`.
+ *
+ * Used where a screen has to name the department the caller acts on behalf of (the
+ * faculty announcements page, whose audience is always the caller's own department).
+ * Throws 404 if the authenticated account has no faculty row, which is a real state:
+ * an account can be provisioned with the FACULTY role before its profile is created.
+ */
+export async function getMyFacultyProfile(): Promise<FacultyResponse> {
+  const { data } = await api.get<FacultyResponse>(`${BASE}/me`);
+  return data;
+}
 
 export async function listFaculty(params: FacultyListParams = {}): Promise<Page<FacultyResponse>> {
   // useServerTable always sends the search box's value as `search` (shared across

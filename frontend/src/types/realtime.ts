@@ -155,8 +155,9 @@ export interface AnnouncementBoardParams {
 }
 
 /**
- * Query params for `GET /api/announcements/manage` (ADMIN only). `search` maps to the
- * backend's `q` — see the trap note in `announcementService.ts`.
+ * Query params for `GET /api/announcements/manage` (ADMIN or FACULTY; the server scopes
+ * a faculty caller to their own announcements). `search` maps to the backend's `q` —
+ * see the trap note in `announcementService.ts`.
  */
 export interface AnnouncementManageParams extends AnnouncementBoardParams {
   search?: string;

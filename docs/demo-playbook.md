@@ -144,7 +144,7 @@ Roughly thirty minutes, arranged so each step sets up the next.
 
 **Coding, honestly.** Playground, a problem, a submission, the honest execution failure, the contest and leaderboard. Explain the constraint in one sentence and move on. Do not apologise for it at length; it reads worse than the limitation itself.
 
-**Switch to faculty.** Show that faculty1 sees only their own classes. Mark a roster, enter marks, then attempt something outside their assignment and let it be refused.
+**Switch to faculty.** Show that faculty1 sees only their own classes. Mark a roster, enter marks, then attempt something outside their assignment and let it be refused. Finish at `/faculty/announcements` and point out what is missing from the form: no audience selector and no department picker, because a faculty member's only legal target is their own department. A control the server would refuse is a control worth not building.
 
 **Switch to admin, and finish live.** Edit a grade band and show a grade change. Then, with a student session still open in another window, post an announcement and let it appear in that student's notification centre without a refresh. Ending on the live push is the right closing beat.
 
@@ -167,7 +167,7 @@ Roughly thirty minutes, arranged so each step sets up the next.
 
 ## 7. Do not do these
 
-**Do not demo faculty announcements through the web UI.** The capability is real and works over the API, but no faculty-facing composition screen exists yet. Show it in Swagger if it comes up, or say it is API-only for now. Clicking around looking for a page that is not there is a bad look for a capability that genuinely works.
+**Do demo faculty announcements, but from the faculty screen, not the admin one.** Faculty compose at `/faculty/announcements`, which shows only their own announcements and targets only their own department. Publishing there while a student of that department has a session open is the same live-notification moment as the admin one, from the other side of the permission boundary.
 
 **Do not claim code execution works.** It does not, on this machine, for a specific and defensible reason. Say so plainly.
 

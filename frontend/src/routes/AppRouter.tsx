@@ -35,6 +35,7 @@ import AdminDashboardPage from "@/pages/dashboard/AdminDashboardPage";
 import FacultyDashboardPage from "@/pages/dashboard/FacultyDashboardPage";
 import StudentDashboardPage from "@/pages/dashboard/StudentDashboardPage";
 import FacultyAnalyticsPage from "@/pages/faculty/FacultyAnalyticsPage";
+import FacultyAnnouncementsPage from "@/pages/faculty/FacultyAnnouncementsPage";
 import FacultyAttendancePage from "@/pages/faculty/FacultyAttendancePage";
 import FacultyExamsPage from "@/pages/faculty/FacultyExamsPage";
 import FacultyMarksPage from "@/pages/faculty/FacultyMarksPage";
@@ -104,6 +105,7 @@ export function AppRouter() {
                   <Route path="/faculty/exams" element={<FacultyExamsPage />} />
                   <Route path="/faculty/marks" element={<FacultyMarksPage />} />
                   <Route path="/faculty/analytics" element={<FacultyAnalyticsPage />} />
+                  <Route path="/faculty/announcements" element={<FacultyAnnouncementsPage />} />
                 </Route>
                 <Route element={<RoleRoute allowedRoles={["ADMIN"]} />}>
                   <Route element={<AdminSectionLayout />}>

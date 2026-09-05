@@ -5,6 +5,7 @@ import {
   CalendarClockIcon,
   ClipboardCheckIcon,
   ClipboardListIcon,
+  MegaphoneIcon,
   NotebookPenIcon,
 } from "lucide-react";
 
@@ -41,6 +42,12 @@ const TEACHING_LINKS = [
     label: "Marks",
     description: "Enter and review student marks",
     icon: NotebookPenIcon,
+  },
+  {
+    to: "/faculty/announcements",
+    label: "Announcements",
+    description: "Publish to your own department",
+    icon: MegaphoneIcon,
   },
 ];
 
