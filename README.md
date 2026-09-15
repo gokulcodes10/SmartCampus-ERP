@@ -10,7 +10,7 @@ Every feature is backed by a real API, a real database table and real persistenc
 
 ## Build Status
 
-✅ **All twelve phases are built, and every §75 gap the final audit found has now been closed.** Phases 1–11 were each verified against real infrastructure — the backend boots against real MySQL with all eleven Flyway migrations applied, and every phase checkpoint was proven by actually performing it: driving the API over HTTP, reading OTP mail out of Mailpit, and making a real Groq call grounded in a student's actual academic record. The backend test suite is **379/379 green**, the frontend suite is **75/75 green across 15 files**, and `npm run build` is clean. Judge0 remains the one blocked component by design — the coding module is fully built against the real Judge0 API contract, but live execution cannot run on Docker Desktop (see [Judge0](#judge0) below), so that one checkpoint is deferred rather than faked; submission recording, the honest failure path, contest registration and leaderboard scoring were all live-verified and work correctly.
+✅ **All twelve phases are built, and every §75 gap the final audit found has now been closed.** Phases 1–11 were each verified against real infrastructure — the backend boots against real MySQL with all eleven Flyway migrations applied, and every phase checkpoint was proven by actually performing it: driving the API over HTTP, reading OTP mail out of Mailpit, and making a real Groq call grounded in a student's actual academic record. The backend test suite is **379/379 green**, the frontend suite is **81/81 green across 16 files**, and `npm run build` is clean. Judge0 remains the one blocked component by design — the coding module is fully built against the real Judge0 API contract, but live execution cannot run on Docker Desktop (see [Judge0](#judge0) below), so that one checkpoint is deferred rather than faked; submission recording, the honest failure path, contest registration and leaderboard scoring were all live-verified and work correctly.
 
 **The §75 audit found three problems. All three are now fixed and re-verified:**
 - **✅ Fixed — "Faculty can send authorized announcements."** `POST /api/announcements` now admits FACULTY as well as ADMIN, and `AnnouncementService` enforces the narrower faculty rule per-row rather than refusing outright: a faculty member may announce to their **own department only**, and may edit or delete **only announcements they created**. Verified live — faculty1 posting to their own department returns `201` with a real fan-out to 7 recipients, while the same token targeting `ALL` or another department gets `403`, a student gets `403`, and a second faculty attempting to delete another's announcement gets `403` where the creator gets `204`. The matching UI now exists too: `/faculty/announcements`, which shows only the caller's own announcements and offers **no** audience or department selector, since the only legal target is their own department.
@@ -468,6 +468,20 @@ npm run lint                 # oxlint
 ```
 
 Phase 12 adds the frontend test runner (Vitest + React Testing Library) and covers the authentication flow (login/logout, token persistence, protected-route redirects), API integration (requests, error envelopes, auth header injection) and form validation, per §64's frontend testing requirement. HTTP is exercised through direct module mocking (`vi.mock`) and, for the axios interceptor tests specifically, a hand-written fake `axios` adapter driving the real interceptor logic end to end — not MSW, which was evaluated and deliberately dropped since every backend call already goes through one shared axios instance already fully under test control. The suite is 81 green across 16 files, verified against a real run; see `PROJECT_PLAN.md`'s Phase 12 note for that verification record.
+
+### Keeping the documented counts honest
+
+Those two figures are quoted in four documents, and they have drifted before — the README advertised "299+ green" long after the backend suite reached 379, and claimed 75 frontend tests across 15 files when the real numbers were 81 and 16. One check now measures both suites and compares them against every place the docs state them:
+
+```bash
+python3 scripts/check-doc-figures.py                  # run both suites, then verify
+python3 scripts/check-doc-figures.py --reuse-backend   # reuse existing surefire reports
+python3 scripts/check-doc-figures.py --update          # rewrite the docs to the measured values
+```
+
+It fails on a mismatch, and also fails if a claim's surrounding wording changed enough that the pattern no longer matches — otherwise a reworded sentence would silently stop being checked. The per-phase counts in `PROJECT_PLAN.md` are deliberately excluded: those record what was true at each phase checkpoint, not the present state.
+
+CI runs it on every push and pull request, after both suites, in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ---
 

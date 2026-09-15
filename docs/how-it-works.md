@@ -99,7 +99,7 @@ The dev server port is **pinned to 5175** with `strictPort` in `vite.config.ts`,
 
 ## 1.9 Testing
 
-379 backend tests and 75 frontend tests. Repository and integration tests run against real MySQL through Testcontainers rather than an in-memory substitute, so migrations and MySQL dialect behaviour are genuinely exercised. The suite needs no environment variables — a throwaway signing key lives in the test resources so a fresh clone can run it immediately.
+379 backend tests and 81 frontend tests. Repository and integration tests run against real MySQL through Testcontainers rather than an in-memory substitute, so migrations and MySQL dialect behaviour are genuinely exercised. The suite needs no environment variables — a throwaway signing key lives in the test resources so a fresh clone can run it immediately.
 
 ```bash
 cd backend  && ./mvnw test      # 379 tests
