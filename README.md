@@ -449,7 +449,7 @@ cd frontend && npm run dev
 ### Backend
 ```bash
 cd backend
-./mvnw test                  # 299+ green (see PROJECT_PLAN.md's Phase Tracker for the exact, currently-verified count)
+./mvnw test                  # 379 green (see PROJECT_PLAN.md's Phase Tracker for the exact, currently-verified count)
 ./mvnw verify                # full suite including integration tests
 ```
 
