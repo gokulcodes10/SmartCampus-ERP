@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { seriesColor } from "@/components/charts/chartColors";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
@@ -24,10 +25,6 @@ import type { AnalyticsStudentResponse } from "@/types/analytics";
 import { extractErrorMessage } from "@/utils/apiError";
 
 const ALL_SENTINEL = "__ALL__";
-
-/** A chart-friendly categorical palette for grade letters, which the backend does not
- *  color (unlike performance categories, whose color always comes from the API). */
-const GRADE_PALETTE = ["#2563EB", "#16A34A", "#CA8A04", "#DB2777", "#7C3AED", "#0891B2", "#EA580C", "#64748B"];
 
 function formatPercent(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(2)}%`;
@@ -246,8 +243,8 @@ export default function StudentAnalyticsPage() {
                     yMax={100}
                     yLabel="%"
                     datasets={[
-                      { label: "Attendance %", data: trend.attendance, color: "#2563EB" },
-                      { label: "Marks %", data: trend.marks, color: "#16A34A" },
+                      { label: "Attendance %", data: trend.attendance },
+                      { label: "Marks %", data: trend.marks },
                     ]}
                   />
                 ) : (
@@ -271,7 +268,6 @@ export default function StudentAnalyticsPage() {
                       {
                         label: "GPA",
                         data: data.gpaTrend.map((p) => p.gpa),
-                        color: "#7C3AED",
                       },
                     ]}
                   />
@@ -290,7 +286,7 @@ export default function StudentAnalyticsPage() {
                   <CategoryBarChart
                     labels={data.subjects.map((s) => s.subjectCode)}
                     data={data.subjects.map((s) => s.attendancePercentage)}
-                    colors={data.subjects.map((s) => s.classificationColorHex ?? "#94A3B8")}
+                    colors={data.subjects.map((s, i) => s.classificationColorHex ?? seriesColor(i))}
                     datasetLabel="Attendance %"
                     yMax={100}
                   />
@@ -309,7 +305,7 @@ export default function StudentAnalyticsPage() {
                   <CategoryBarChart
                     labels={data.subjects.map((s) => s.subjectCode)}
                     data={data.subjects.map((s) => s.marksPercentage)}
-                    colors={data.subjects.map((s) => s.classificationColorHex ?? "#94A3B8")}
+                    colors={data.subjects.map((s, i) => s.classificationColorHex ?? seriesColor(i))}
                     datasetLabel="Marks %"
                     yMax={100}
                   />
@@ -331,7 +327,7 @@ export default function StudentAnalyticsPage() {
                   <DistributionDoughnutChart
                     labels={gradeChartSlices.map((s) => s.grade)}
                     data={gradeChartSlices.map((s) => s.count)}
-                    colors={gradeChartSlices.map((_, i) => GRADE_PALETTE[i % GRADE_PALETTE.length])}
+                    colors={gradeChartSlices.map((_, i) => seriesColor(i))}
                   />
                 ) : (
                   <EmptyChartState message="No graded subjects yet." />

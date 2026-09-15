@@ -30,14 +30,14 @@ export function MobileNavDrawer({ open, onOpenChange, links }: MobileNavDrawerPr
         />
         <DialogPrimitive.Popup
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-4 bg-sidebar p-4",
+            "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-4 bg-sidebar px-4 py-5",
             "text-sidebar-foreground outline-none duration-200 lg:hidden",
             "data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left",
           )}
         >
           <div className="flex items-center justify-between">
-            <DialogPrimitive.Title className="text-sm font-semibold tracking-tight">
-              SmartCampus ERP
+            <DialogPrimitive.Title className="text-[17px] font-bold tracking-[0.02em]">
+              SMARTCAMPUS<span className="text-sidebar-ring">ERP</span>
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
               render={<Button variant="ghost" size="icon" aria-label="Close navigation menu" />}

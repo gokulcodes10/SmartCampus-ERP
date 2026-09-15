@@ -5,6 +5,7 @@ import { AnalyticsFilterBar, type AnalyticsFilters } from "@/components/analytic
 import { ClassificationBadge } from "@/components/analytics/ClassificationBadge";
 import { EmptyChartState } from "@/components/analytics/EmptyChartState";
 import { StatTile } from "@/components/analytics/StatTile";
+import { seriesColor } from "@/components/charts/chartColors";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
@@ -21,19 +22,6 @@ import type {
   MarksTrendPoint,
 } from "@/types/analytics";
 import { extractErrorMessage } from "@/utils/apiError";
-
-/** Fixed categorical order — never hue-cycled — for the grade-distribution slices,
- *  which (unlike performance-band classification) carry no backend color. */
-const GRADE_PALETTE = [
-  "#2a78d6",
-  "#eb6834",
-  "#1baf7a",
-  "#eda100",
-  "#e87ba4",
-  "#008300",
-  "#4a3aa7",
-  "#e34948",
-];
 
 function mergeTrends(attendanceTrend: AttendanceTrendPoint[], marksTrend: MarksTrendPoint[]) {
   const periodStart = new Map<string, string>();
@@ -248,8 +236,8 @@ export default function AdminAnalyticsPage() {
               <TrendLineChart
                 labels={trend.labels}
                 datasets={[
-                  { label: "Attendance %", data: trend.attendanceData, color: "#2a78d6" },
-                  { label: "Marks %", data: trend.marksData, color: "#eb6834" },
+                  { label: "Attendance %", data: trend.attendanceData },
+                  { label: "Marks %", data: trend.marksData },
                 ]}
                 yLabel="%"
                 yMax={100}
@@ -329,12 +317,10 @@ export default function AdminAnalyticsPage() {
                   {
                     label: "Attendance %",
                     data: data.semesters.map((s) => s.attendancePercentage),
-                    color: "#2a78d6",
                   },
                   {
                     label: "Marks %",
                     data: data.semesters.map((s) => s.marksPercentage),
-                    color: "#eb6834",
                   },
                 ]}
                 yLabel="%"
@@ -356,7 +342,7 @@ export default function AdminAnalyticsPage() {
               <DistributionDoughnutChart
                 labels={data.gradeDistribution.map((s) => s.grade)}
                 data={data.gradeDistribution.map((s) => s.count)}
-                colors={data.gradeDistribution.map((_, i) => GRADE_PALETTE[i % GRADE_PALETTE.length])}
+                colors={data.gradeDistribution.map((_, i) => seriesColor(i))}
               />
             )}
           </CardContent>

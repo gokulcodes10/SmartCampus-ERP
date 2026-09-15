@@ -216,8 +216,8 @@ export default function FacultyAnalyticsPage() {
                   <TrendLineChart
                     labels={trend.labels}
                     datasets={[
-                      { label: "Attendance %", data: trend.attendanceData, color: "#2a78d6" },
-                      { label: "Marks %", data: trend.marksData, color: "#eb6834" },
+                      { label: "Attendance %", data: trend.attendanceData },
+                      { label: "Marks %", data: trend.marksData },
                     ]}
                     yLabel="%"
                     yMax={100}

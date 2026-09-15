@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 
 import { EmptyChartState } from "@/components/analytics/EmptyChartState";
+import { KpiCard } from "@/components/analytics/KpiCard";
 import { StatTile } from "@/components/analytics/StatTile";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -77,10 +79,47 @@ export default function AdminDashboardPage() {
   const classificationHasData = analytics ? analytics.classificationDistribution.some((s) => s.studentCount > 0) : false;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome, {user?.fullName}</h1>
-        <p className="text-muted-foreground">Admin dashboard</p>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader
+        title={`Welcome, ${user?.fullName ?? ""}`}
+        description="Here's what's happening across the institution today."
+      />
+
+      {/* The design's headline row: four saturated tiles carrying the figures an
+          administrator checks first, before any chart. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Total students"
+          value={analytics?.totalStudents ?? null}
+          emptyText="—"
+          hint={analytics ? `${analytics.activeStudents} active` : undefined}
+          icon={UserRoundCheckIcon}
+          tone="emerald"
+        />
+        <KpiCard
+          label="Total faculty"
+          value={analytics?.totalFaculty ?? null}
+          emptyText="—"
+          hint={analytics ? `Across ${analytics.totalDepartments} departments` : undefined}
+          icon={UsersRoundIcon}
+          tone="violet"
+        />
+        <KpiCard
+          label="Pending sign-ups"
+          value={analytics?.pendingStudents ?? null}
+          emptyText="—"
+          hint="Awaiting activation"
+          icon={UserRoundCheckIcon}
+          tone="blue"
+        />
+        <KpiCard
+          label="Students at risk"
+          value={analytics ? analytics.atRiskStudents.length : null}
+          emptyText="—"
+          hint="Below the attendance or marks threshold"
+          icon={BarChart3Icon}
+          tone="red"
+        />
       </div>
 
       <Card>
@@ -108,13 +147,7 @@ export default function AdminDashboardPage() {
           {!analyticsLoading && !analyticsError && analytics && (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <StatTile label="Total students" value={analytics.totalStudents} emptyText="0" />
-                <StatTile label="Active students" value={analytics.activeStudents} emptyText="0" />
-                <StatTile label="Pending students" value={analytics.pendingStudents} emptyText="0" tone="warning" />
-                <StatTile label="Total faculty" value={analytics.totalFaculty} emptyText="0" />
                 <StatTile label="Departments" value={analytics.totalDepartments} emptyText="0" />
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 <StatTile label="Attendance" value={analytics.attendancePercentage} suffix="%" emptyText="No classes held yet" />
                 <StatTile label="Marks" value={analytics.marksPercentage} suffix="%" emptyText="No marks entered yet" />
                 <StatTile label="Average GPA" value={analytics.averageGpa} emptyText="Not enough data" />
@@ -173,7 +206,7 @@ export default function AdminDashboardPage() {
             <Link
               key={to}
               to={to}
-              className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:bg-muted"
+              className="flex items-start gap-3 rounded-[10px] border border-border p-3.5 text-sm transition-colors hover:border-primary/40 hover:bg-accent"
             >
               <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <span>

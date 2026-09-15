@@ -3,6 +3,7 @@ import type { ChartOptions, TooltipItem } from "chart.js";
 
 import { cn } from "@/lib/utils";
 
+import { chartChrome, seriesColor } from "./chartColors";
 import { registerCharts } from "./registerCharts";
 
 registerCharts();
@@ -10,7 +11,8 @@ registerCharts();
 export interface TrendLineChartDataset {
   label: string;
   data: (number | null)[];
-  color: string;
+  /** Omit to take the next colour from the design's categorical ramp. */
+  color?: string;
 }
 
 export interface TrendLineChartProps {
@@ -29,25 +31,31 @@ export interface TrendLineChartProps {
  * has no point for.
  */
 export function TrendLineChart({ labels, datasets, yLabel, yMax, className }: TrendLineChartProps) {
+  const chrome = chartChrome();
   const data = {
     labels,
-    datasets: datasets.map((ds) => ({
+    datasets: datasets.map((ds, i) => {
+      const color = ds.color ?? seriesColor(i);
+      return {
       label: ds.label,
       data: ds.data,
-      borderColor: ds.color,
-      backgroundColor: ds.color,
-      pointBackgroundColor: ds.color,
+      borderColor: color,
+      backgroundColor: color,
+      pointBackgroundColor: color,
       spanGaps: false,
       tension: 0.25,
       fill: false,
-    })),
+      borderWidth: 2,
+      pointRadius: 3,
+      };
+    }),
   };
 
   const options: ChartOptions<"line"> = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: "top" },
+      legend: { position: "top", labels: { color: chrome.tick, usePointStyle: true, boxWidth: 8 } },
       tooltip: {
         callbacks: {
           label: (item: TooltipItem<"line">) => {
@@ -62,7 +70,15 @@ export function TrendLineChart({ labels, datasets, yLabel, yMax, className }: Tr
       y: {
         beginAtZero: true,
         max: yMax,
-        title: yLabel ? { display: true, text: yLabel } : undefined,
+        title: yLabel ? { display: true, text: yLabel, color: chrome.tick } : undefined,
+        grid: { color: chrome.grid },
+        border: { color: chrome.border },
+        ticks: { color: chrome.tick },
+      },
+      x: {
+        grid: { display: false },
+        border: { color: chrome.border },
+        ticks: { color: chrome.tick },
       },
     },
   };

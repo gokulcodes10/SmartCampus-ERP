@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 
 import { EmptyChartState } from "@/components/analytics/EmptyChartState";
+import { KpiCard } from "@/components/analytics/KpiCard";
 import { StatTile } from "@/components/analytics/StatTile";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -89,10 +91,49 @@ export default function FacultyDashboardPage() {
   const classificationHasData = analytics ? analytics.classificationDistribution.some((s) => s.studentCount > 0) : false;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome, {user?.fullName}</h1>
-        <p className="text-muted-foreground">Faculty dashboard</p>
+    <div className="mx-auto max-w-5xl space-y-5">
+      <PageHeader
+        title={`Welcome, ${user?.fullName ?? ""}`}
+        description="How your classes are tracking, and what needs entering."
+      />
+
+      {/* The design's headline row, scoped to the classes this member of staff is
+          assigned to. Figures stay null-honest when nothing has been recorded. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Class attendance"
+          value={analytics?.attendancePercentage ?? null}
+          suffix="%"
+          emptyText="No classes held"
+          hint="Across your assigned subjects"
+          icon={ClipboardListIcon}
+          tone="emerald"
+        />
+        <KpiCard
+          label="Class marks"
+          value={analytics?.marksPercentage ?? null}
+          suffix="%"
+          emptyText="No marks entered"
+          hint="Mean across graded assessments"
+          icon={NotebookPenIcon}
+          tone="violet"
+        />
+        <KpiCard
+          label="Students taught"
+          value={analytics?.studentCount ?? null}
+          emptyText="—"
+          hint="Enrolled in your subjects"
+          icon={ClipboardCheckIcon}
+          tone="blue"
+        />
+        <KpiCard
+          label="Upcoming exams"
+          value={upcomingExams?.length ?? null}
+          emptyText="—"
+          hint="Scheduled for your subjects"
+          icon={CalendarClockIcon}
+          tone="navy"
+        />
       </div>
 
       <Card>
@@ -148,10 +189,7 @@ export default function FacultyDashboardPage() {
           {!analyticsLoading && !analyticsError && hasAssignments && analytics && (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatTile label="Attendance" value={analytics.attendancePercentage} suffix="%" emptyText="No classes held yet" />
-                <StatTile label="Marks" value={analytics.marksPercentage} suffix="%" emptyText="No marks entered yet" />
                 <StatTile label="Average GPA" value={analytics.averageGpa} emptyText="Not enough data" />
-                <StatTile label="Students" value={analytics.studentCount} emptyText="0" />
               </div>
               {classificationHasData ? (
                 <DistributionDoughnutChart

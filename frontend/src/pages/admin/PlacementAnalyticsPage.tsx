@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { EmptyChartState } from "@/components/analytics/EmptyChartState";
 import { StatTile } from "@/components/analytics/StatTile";
+import { seriesColor } from "@/components/charts/chartColors";
 import { CategoryBarChart } from "@/components/charts/CategoryBarChart";
 import { DistributionDoughnutChart } from "@/components/charts/DistributionDoughnutChart";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,17 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import * as placementAnalyticsService from "@/services/placementAnalyticsService";
 import { extractErrorMessage } from "@/utils/apiError";
 import type { PlacementAnalyticsResponse } from "@/types/placement";
-
-/** Fixed categorical order for the application-status doughnut — never hue-cycled. */
-const STATUS_PALETTE = [
-  "#2a78d6",
-  "#eb6834",
-  "#4a3aa7",
-  "#e87ba4",
-  "#1baf7a",
-  "#e34948",
-  "#8a8f98",
-];
 
 /**
  * `/admin/placement/analytics` — institution-wide placement figures against
@@ -113,7 +103,7 @@ export default function PlacementAnalyticsPage() {
               <DistributionDoughnutChart
                 labels={data.statusBreakdown.map((s) => s.status)}
                 data={data.statusBreakdown.map((s) => s.count)}
-                colors={data.statusBreakdown.map((_, i) => STATUS_PALETTE[i % STATUS_PALETTE.length])}
+                colors={data.statusBreakdown.map((_, i) => seriesColor(i))}
               />
             )}
           </CardContent>

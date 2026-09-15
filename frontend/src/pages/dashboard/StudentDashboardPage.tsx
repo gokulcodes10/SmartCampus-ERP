@@ -4,9 +4,10 @@ import { BarChart3Icon, CalendarClockIcon, ClipboardListIcon, GraduationCapIcon 
 
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { ClassificationBadge } from "@/components/analytics/ClassificationBadge";
+import { KpiCard } from "@/components/analytics/KpiCard";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { UpcomingInterviewsCard } from "@/components/interview/UpcomingInterviewsCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import * as analyticsService from "@/services/analyticsService";
@@ -50,10 +51,44 @@ export default function StudentDashboardPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome, {user?.fullName}</h1>
-        <p className="text-muted-foreground">Student dashboard</p>
+    <div className="mx-auto max-w-5xl space-y-5">
+      <PageHeader
+        title={`Welcome, ${user?.fullName ?? ""}`}
+        description="Your attendance, grades and what's coming up."
+      />
+
+      {/* Headline figures first, in the design's gradient tiles — the two numbers a
+          student opens this page for, plus what is due next. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Link to="/student/attendance" className="block rounded-lg transition-shadow hover:shadow-raised">
+          <KpiCard
+            label="Attendance"
+            value={analytics?.attendancePercentage ?? null}
+            suffix="%"
+            emptyText="No classes held"
+            hint={analytics?.attendance.lowAttendance ? "Below the minimum requirement" : "Across every subject"}
+            icon={ClipboardListIcon}
+            tone={analytics?.attendance.lowAttendance ? "red" : "emerald"}
+          />
+        </Link>
+        <Link to="/student/marks" className="block rounded-lg transition-shadow hover:shadow-raised">
+          <KpiCard
+            label="CGPA"
+            value={analytics?.cgpa ?? null}
+            emptyText="Not graded yet"
+            hint="Credit-weighted across graded subjects"
+            icon={GraduationCapIcon}
+            tone="violet"
+          />
+        </Link>
+        <KpiCard
+          label="Upcoming exams"
+          value={upcomingExams?.length ?? null}
+          emptyText="—"
+          hint="Scheduled for your subjects"
+          icon={CalendarClockIcon}
+          tone="blue"
+        />
       </div>
 
       {analyticsError && (
@@ -62,55 +97,8 @@ export default function StudentDashboardPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link to="/student/attendance" className="block">
-          <Card className="h-full transition-colors hover:bg-muted/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ClipboardListIcon className="size-4 text-muted-foreground" />
-                Attendance
-              </CardTitle>
-              <CardDescription>Your attendance across every subject.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {analyticsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-              {!analyticsLoading && analytics && (
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl font-semibold tracking-tight">
-                    {analytics.attendancePercentage === null
-                      ? "No classes held"
-                      : `${analytics.attendancePercentage.toFixed(2)}%`}
-                  </span>
-                  {analytics.attendance.lowAttendance && <Badge variant="destructive">Below minimum</Badge>}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link to="/student/marks" className="block">
-          <Card className="h-full transition-colors hover:bg-muted/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <GraduationCapIcon className="size-4 text-muted-foreground" />
-                CGPA
-              </CardTitle>
-              <CardDescription>Credit-weighted across every graded subject.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {analyticsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-              {!analyticsLoading && analytics && (
-                <span className="text-2xl font-semibold tracking-tight">
-                  {analytics.cgpa === null ? "Not graded yet" : analytics.cgpa}
-                </span>
-              )}
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
       <Link to="/student/analytics" className="block">
-        <Card className="transition-colors hover:bg-muted/50">
+        <Card className="transition-shadow hover:shadow-raised">
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-2 text-base">
               <span className="flex items-center gap-2">
@@ -138,7 +126,6 @@ export default function StudentDashboardPage() {
                   {
                     label: "Attendance %",
                     data: analytics.attendanceTrend.map((p) => p.attendancePercentage),
-                    color: "#2563EB",
                   },
                 ]}
               />

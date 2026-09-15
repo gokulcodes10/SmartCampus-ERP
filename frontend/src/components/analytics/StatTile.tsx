@@ -12,8 +12,8 @@ export interface StatTileProps {
 
 const TONE_CLASSES: Record<NonNullable<StatTileProps["tone"]>, string> = {
   default: "text-foreground",
-  positive: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400",
+  positive: "text-success-foreground",
+  warning: "text-warning-foreground",
   danger: "text-destructive",
 };
 
@@ -39,17 +39,17 @@ export function StatTile({
         : `${value}${suffix ?? ""}`;
 
   return (
-    <div className={cn("space-y-1", className)}>
-      <p className="text-sm text-muted-foreground">{label}</p>
+    <div className={cn("rounded-[10px] bg-surface-subtle px-4 py-3.5", className)}>
+      <p className="text-[12.5px] font-medium text-muted-foreground">{label}</p>
       <p
         className={cn(
-          "text-2xl font-semibold tracking-tight",
+          "mt-1 text-2xl font-bold tracking-tight tabular-nums",
           value === null ? "text-muted-foreground" : TONE_CLASSES[tone],
         )}
       >
         {display}
       </p>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

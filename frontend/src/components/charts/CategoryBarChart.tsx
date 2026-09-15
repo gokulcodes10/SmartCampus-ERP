@@ -3,6 +3,7 @@ import type { ChartOptions, TooltipItem } from "chart.js";
 
 import { cn } from "@/lib/utils";
 
+import { chartChrome, seriesColor } from "./chartColors";
 import { registerCharts } from "./registerCharts";
 
 registerCharts();
@@ -37,17 +38,21 @@ export function CategoryBarChart({
       {
         label: datasetLabel,
         data,
-        backgroundColor: colors ?? "#2563EB",
+        backgroundColor: colors ?? seriesColor(0),
+        borderRadius: 6,
+        maxBarThickness: 44,
       },
     ],
   };
+
+  const chrome = chartChrome();
 
   const options: ChartOptions<"bar"> = {
     indexAxis: horizontal ? "y" : "x",
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: "top" },
+      legend: { position: "top", labels: { color: chrome.tick, usePointStyle: true, boxWidth: 8 } },
       tooltip: {
         callbacks: {
           label: (item: TooltipItem<"bar">) => {
@@ -62,6 +67,14 @@ export function CategoryBarChart({
       [horizontal ? "x" : "y"]: {
         beginAtZero: true,
         max: yMax,
+        grid: { color: chrome.grid },
+        border: { color: chrome.border },
+        ticks: { color: chrome.tick },
+      },
+      [horizontal ? "y" : "x"]: {
+        grid: { display: false },
+        border: { color: chrome.border },
+        ticks: { color: chrome.tick },
       },
     },
   };
