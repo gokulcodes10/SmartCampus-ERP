@@ -460,14 +460,14 @@ Coverage spans every phase: registration, login, duplicate email, non-enumeratin
 ### Frontend
 ```bash
 cd frontend
-npm test                     # vitest run — full suite, once
+npm test                     # 81 green — vitest run, full suite, once
 npm run test:watch           # vitest — watch mode
 npm run test:coverage        # vitest run --coverage
 npm run build                # tsc -b + vite build
 npm run lint                 # oxlint
 ```
 
-Phase 12 adds the frontend test runner (Vitest + React Testing Library) and covers the authentication flow (login/logout, token persistence, protected-route redirects), API integration (requests, error envelopes, auth header injection) and form validation, per §64's frontend testing requirement. HTTP is exercised through direct module mocking (`vi.mock`) and, for the axios interceptor tests specifically, a hand-written fake `axios` adapter driving the real interceptor logic end to end — not MSW, which was evaluated and deliberately dropped since every backend call already goes through one shared axios instance already fully under test control. See `PROJECT_PLAN.md`'s Phase 12 note for the exact test count as verified against a real run — this README does not restate a number that could drift out of sync with it.
+Phase 12 adds the frontend test runner (Vitest + React Testing Library) and covers the authentication flow (login/logout, token persistence, protected-route redirects), API integration (requests, error envelopes, auth header injection) and form validation, per §64's frontend testing requirement. HTTP is exercised through direct module mocking (`vi.mock`) and, for the axios interceptor tests specifically, a hand-written fake `axios` adapter driving the real interceptor logic end to end — not MSW, which was evaluated and deliberately dropped since every backend call already goes through one shared axios instance already fully under test control. The suite is 81 green across 16 files, verified against a real run; see `PROJECT_PLAN.md`'s Phase 12 note for that verification record.
 
 ---
 
