@@ -15,6 +15,24 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+
+    # PasswordResetFlowIntegrationTest and OtpExpirationTest read real mail back
+    # out of Mailpit's REST API on :8025, and neither has a skip guard, so the
+    # container has to exist here or the suite fails — which is exactly how this
+    # workflow failed on its first run.
+    #
+    # MySQL is deliberately NOT declared: the repository and integration tests
+    # start their own through Testcontainers, against the runner's Docker daemon.
+    services:
+      mailpit:
+        image: axllent/mailpit:v1.28
+        ports:
+          - 1025:1025
+          - 8025:8025
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 1
+          MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +46,20 @@ jobs:
       # Repository and integration tests drive a real MySQL through
       # Testcontainers, which uses the Docker daemon already present on the
       # ubuntu runner. No service container is declared for that reason.
+      # A service container being "started" does not mean it is accepting
+      # requests yet; without this the first mail assertion can race it.
+      - name: Wait for Mailpit
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8025/api/v1/messages >/dev/null 2>&1; then
+              echo "Mailpit is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Mailpit did not become ready within 60s" >&2
+          exit 1
+
       - name: Run the suite
         working-directory: backend
         run: ./mvnw -B test
